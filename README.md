@@ -8,6 +8,7 @@ A powerful Figma plugin that enables "Class-based" design by treating node trees
 
 - **Deep Serialization**: Captures nested children, auto-layout settings, fills, strokes, effects, and bound variables.
 - **Smart Restoration**: Recreates complex node trees with pixel perfection, automatically loading required fonts.
+- **Text Style & Variable Support**: Preserves text style references and complex text property variable bindings (font size, letter spacing, etc.).
 - **Variable Support**: Preserves variable bindings for colors, spacing, and numbers.
 - **Sync & Registry**: Uses Figma's `SharedPluginData` to synchronize class definitions across all users of a document.
 - **Local Persistence**: Stores your personal classes in `clientStorage` for use across different files.
@@ -30,7 +31,7 @@ A powerful Figma plugin that enables "Class-based" design by treating node trees
 
 1. Clone the repository:
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/Hakimei/figma-plugin-class-manager.git
    cd create-class-element
    ```
 
