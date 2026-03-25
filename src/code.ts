@@ -53,6 +53,10 @@ interface SerializedNode {
   fills?: PaintDef[];
   strokes?: PaintDef[];
   strokeWeight?: number;
+  strokeTopWeight?: number;
+  strokeRightWeight?: number;
+  strokeBottomWeight?: number;
+  strokeLeftWeight?: number;
   strokeAlign?: string;
   effects?: ShadowDef[];
   // Shared corners
@@ -214,6 +218,12 @@ function serializeNode(node: SceneNode): SerializedNode {
     base.strokes = safeStrokes(node);
     base.strokeWeight = safeStrokeWeight(node);
     base.strokeAlign = (node as any).strokeAlign;
+
+    if ("strokeTopWeight" in node) base.strokeTopWeight = (node as any).strokeTopWeight as number;
+    if ("strokeRightWeight" in node) base.strokeRightWeight = (node as any).strokeRightWeight as number;
+    if ("strokeBottomWeight" in node) base.strokeBottomWeight = (node as any).strokeBottomWeight as number;
+    if ("strokeLeftWeight" in node) base.strokeLeftWeight = (node as any).strokeLeftWeight as number;
+
     if ("effects" in node) {
       base.effects = (node.effects as Effect[]).map(serializeEffect).filter((e): e is ShadowDef => e !== null);
     }
@@ -342,10 +352,19 @@ function applyFills(node: any, fills: PaintDef[] | undefined) {
   node.fills = fills.map(applyPaint).filter((p): p is Paint => p !== null);
 }
 
-function applyStrokes(node: any, strokes: PaintDef[] | undefined, weight: number | undefined, align: string | undefined) {
+function applyStrokes(node: any, strokes: PaintDef[] | undefined, weight: number | undefined, align: string | undefined, individualWeights?: { top?: number; right?: number; bottom?: number; left?: number }) {
   if (!strokes) return;
   node.strokes = strokes.map(applyPaint).filter((p): p is Paint => p !== null);
+
   if (weight !== undefined) node.strokeWeight = weight;
+
+  if (individualWeights) {
+    if (individualWeights.top !== undefined && "strokeTopWeight" in node) node.strokeTopWeight = individualWeights.top;
+    if (individualWeights.right !== undefined && "strokeRightWeight" in node) node.strokeRightWeight = individualWeights.right;
+    if (individualWeights.bottom !== undefined && "strokeBottomWeight" in node) node.strokeBottomWeight = individualWeights.bottom;
+    if (individualWeights.left !== undefined && "strokeLeftWeight" in node) node.strokeLeftWeight = individualWeights.left;
+  }
+
   if (align !== undefined) node.strokeAlign = align as any;
 }
 
@@ -406,24 +425,24 @@ function applyCorners(node: any, data: SerializedNode) {
 
 function applyFrameLayout(frame: FrameNode | ComponentNode, data: SerializedNode) {
   if (data.layoutMode !== undefined) (frame as any).layoutMode = data.layoutMode;
-  
+
   // These properties only exist when Auto Layout is enabled (horizontal or vertical)
   if (data.layoutMode && data.layoutMode !== "NONE") {
     if (data.primaryAxisSizingMode) frame.primaryAxisSizingMode = data.primaryAxisSizingMode;
     if (data.counterAxisSizingMode) frame.counterAxisSizingMode = data.counterAxisSizingMode;
     if (data.primaryAxisAlignItems) frame.primaryAxisAlignItems = data.primaryAxisAlignItems;
     if (data.counterAxisAlignItems) frame.counterAxisAlignItems = data.counterAxisAlignItems as any;
-    
+
     if (data.itemSpacing !== undefined) frame.itemSpacing = data.itemSpacing;
     if (data.itemReverseZIndex !== undefined) frame.itemReverseZIndex = data.itemReverseZIndex;
     if (data.strokesIncludedInLayout !== undefined) frame.strokesIncludedInLayout = data.strokesIncludedInLayout;
-    
+
     if (data.paddingTop !== undefined) frame.paddingTop = data.paddingTop;
     if (data.paddingBottom !== undefined) frame.paddingBottom = data.paddingBottom;
     if (data.paddingLeft !== undefined) frame.paddingLeft = data.paddingLeft;
     if (data.paddingRight !== undefined) frame.paddingRight = data.paddingRight;
   }
-  
+
   if (data.clipsContent !== undefined) frame.clipsContent = data.clipsContent;
 }
 
@@ -465,7 +484,12 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
     frame.visible = data.visible;
 
     applyFills(frame, data.fills);
-    applyStrokes(frame, data.strokes, data.strokeWeight, data.strokeAlign);
+    applyStrokes(frame, data.strokes, data.strokeWeight, data.strokeAlign, {
+      top: data.strokeTopWeight,
+      right: data.strokeRightWeight,
+      bottom: data.strokeBottomWeight,
+      left: data.strokeLeftWeight,
+    });
     applyEffects(frame, data.effects);
     applyCorners(frame, data);
     applyFrameLayout(frame, data);
@@ -510,6 +534,12 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
     } else {
       tempFrame.name = data.name;
       applyFills(tempFrame, data.fills);
+      applyStrokes(tempFrame, data.strokes, data.strokeWeight, data.strokeAlign, {
+        top: data.strokeTopWeight,
+        right: data.strokeRightWeight,
+        bottom: data.strokeBottomWeight,
+        left: data.strokeLeftWeight,
+      });
       node = tempFrame;
     }
   }
@@ -525,7 +555,12 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
     rect.blendMode = data.blendMode as BlendMode;
     rect.visible = data.visible;
     applyFills(rect, data.fills);
-    applyStrokes(rect, data.strokes, data.strokeWeight, data.strokeAlign);
+    applyStrokes(rect, data.strokes, data.strokeWeight, data.strokeAlign, {
+      top: data.strokeTopWeight,
+      right: data.strokeRightWeight,
+      bottom: data.strokeBottomWeight,
+      left: data.strokeLeftWeight,
+    });
     applyEffects(rect, data.effects);
     applyCorners(rect, data);
     applyBaseLayout(rect, data);

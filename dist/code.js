@@ -87,6 +87,10 @@
       base.strokes = safeStrokes(node);
       base.strokeWeight = safeStrokeWeight(node);
       base.strokeAlign = node.strokeAlign;
+      if ("strokeTopWeight" in node) base.strokeTopWeight = node.strokeTopWeight;
+      if ("strokeRightWeight" in node) base.strokeRightWeight = node.strokeRightWeight;
+      if ("strokeBottomWeight" in node) base.strokeBottomWeight = node.strokeBottomWeight;
+      if ("strokeLeftWeight" in node) base.strokeLeftWeight = node.strokeLeftWeight;
       if ("effects" in node) {
         base.effects = node.effects.map(serializeEffect).filter((e) => e !== null);
       }
@@ -192,10 +196,16 @@
     if (!fills) return;
     node.fills = fills.map(applyPaint).filter((p) => p !== null);
   }
-  function applyStrokes(node, strokes, weight, align) {
+  function applyStrokes(node, strokes, weight, align, individualWeights) {
     if (!strokes) return;
     node.strokes = strokes.map(applyPaint).filter((p) => p !== null);
     if (weight !== void 0) node.strokeWeight = weight;
+    if (individualWeights) {
+      if (individualWeights.top !== void 0 && "strokeTopWeight" in node) node.strokeTopWeight = individualWeights.top;
+      if (individualWeights.right !== void 0 && "strokeRightWeight" in node) node.strokeRightWeight = individualWeights.right;
+      if (individualWeights.bottom !== void 0 && "strokeBottomWeight" in node) node.strokeBottomWeight = individualWeights.bottom;
+      if (individualWeights.left !== void 0 && "strokeLeftWeight" in node) node.strokeLeftWeight = individualWeights.left;
+    }
     if (align !== void 0) node.strokeAlign = align;
   }
   function applyEffects(node, effects) {
@@ -299,7 +309,12 @@
       frame.blendMode = data.blendMode;
       frame.visible = data.visible;
       applyFills(frame, data.fills);
-      applyStrokes(frame, data.strokes, data.strokeWeight, data.strokeAlign);
+      applyStrokes(frame, data.strokes, data.strokeWeight, data.strokeAlign, {
+        top: data.strokeTopWeight,
+        right: data.strokeRightWeight,
+        bottom: data.strokeBottomWeight,
+        left: data.strokeLeftWeight
+      });
       applyEffects(frame, data.effects);
       applyCorners(frame, data);
       applyFrameLayout(frame, data);
@@ -337,6 +352,12 @@
       } else {
         tempFrame.name = data.name;
         applyFills(tempFrame, data.fills);
+        applyStrokes(tempFrame, data.strokes, data.strokeWeight, data.strokeAlign, {
+          top: data.strokeTopWeight,
+          right: data.strokeRightWeight,
+          bottom: data.strokeBottomWeight,
+          left: data.strokeLeftWeight
+        });
         node = tempFrame;
       }
     } else if (data.type === "RECTANGLE") {
@@ -350,7 +371,12 @@
       rect.blendMode = data.blendMode;
       rect.visible = data.visible;
       applyFills(rect, data.fills);
-      applyStrokes(rect, data.strokes, data.strokeWeight, data.strokeAlign);
+      applyStrokes(rect, data.strokes, data.strokeWeight, data.strokeAlign, {
+        top: data.strokeTopWeight,
+        right: data.strokeRightWeight,
+        bottom: data.strokeBottomWeight,
+        left: data.strokeLeftWeight
+      });
       applyEffects(rect, data.effects);
       applyCorners(rect, data);
       applyBaseLayout(rect, data);
