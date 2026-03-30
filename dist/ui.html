@@ -674,6 +674,43 @@
       transition-duration: 0.01ms !important;
     }
   }
+
+  /* ── Resize Handle ── */
+  .resize-handle {
+    position: fixed;
+    bottom: 0;
+    right: 0;
+    width: 20px;
+    height: 20px;
+    cursor: nwse-resize;
+    z-index: 200;
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    padding: 3px;
+    opacity: 0.35;
+    transition: opacity var(--transition-fast);
+  }
+  .resize-handle:hover {
+    opacity: 0.7;
+  }
+  .resize-handle.dragging {
+    opacity: 0.9;
+  }
+  .resize-handle svg {
+    display: block;
+  }
+  /* Overlay to capture mouse during drag */
+  .resize-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 199;
+    cursor: nwse-resize;
+    display: none;
+  }
+  .resize-overlay.active {
+    display: block;
+  }
 </style>
 </head>
 <body>
@@ -879,6 +916,16 @@
       Save as Personal Class
     </button>
   </div>
+</div>
+
+<!-- Resize Handle -->
+<div class="resize-overlay" id="resizeOverlay"></div>
+<div class="resize-handle" id="resizeHandle" title="Drag to resize">
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+    <path d="M10 2L2 10" stroke="var(--muted-foreground)" stroke-width="1.2" stroke-linecap="round"/>
+    <path d="M10 6L6 10" stroke="var(--muted-foreground)" stroke-width="1.2" stroke-linecap="round"/>
+    <path d="M10 10L10 10" stroke="var(--muted-foreground)" stroke-width="1.5" stroke-linecap="round"/>
+  </svg>
 </div>
 
 <!-- Toast -->
@@ -1210,6 +1257,64 @@
     if (toastTimer) clearTimeout(toastTimer);
     toastTimer = setTimeout(() => toast.classList.remove("show"), 2800);
   }
+
+  // ── Resize Handle ──
+  (() => {
+    const handle = document.getElementById("resizeHandle");
+    const overlay = document.getElementById("resizeOverlay");
+    const MIN_W = 280;
+    const MIN_H = 400;
+    const MAX_W = 800;
+    const MAX_H = 1200;
+
+    let isDragging = false;
+    let startX, startY, startW, startH;
+
+    // Get current iframe dimensions
+    function getSize() {
+      return {
+        w: document.documentElement.clientWidth,
+        h: document.documentElement.clientHeight
+      };
+    }
+
+    handle.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      isDragging = true;
+      const size = getSize();
+      startX = e.clientX;
+      startY = e.clientY;
+      startW = size.w;
+      startH = size.h;
+      handle.classList.add("dragging");
+      overlay.classList.add("active");
+    });
+
+    function onMouseMove(e) {
+      if (!isDragging) return;
+      e.preventDefault();
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      const newW = Math.max(MIN_W, Math.min(MAX_W, startW + dx));
+      const newH = Math.max(MIN_H, Math.min(MAX_H, startH + dy));
+      post({ type: "resize", width: Math.round(newW), height: Math.round(newH) });
+    }
+
+    function onMouseUp() {
+      if (!isDragging) return;
+      isDragging = false;
+      handle.classList.remove("dragging");
+      overlay.classList.remove("active");
+    }
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+
+    // Also handle if mouse leaves the iframe
+    overlay.addEventListener("mousemove", onMouseMove);
+    overlay.addEventListener("mouseup", onMouseUp);
+  })();
 </script>
 </body>
 </html>

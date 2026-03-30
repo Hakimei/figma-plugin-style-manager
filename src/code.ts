@@ -707,7 +707,7 @@ function generateId(): string {
 // Main plugin logic
 // ─────────────────────────────────────────────────────────────────────────────
 
-figma.showUI(__html__, { width: 320, height: 560, title: "Styles Managers" });
+figma.showUI(__html__, { width: 320, height: 560, title: "Styles Managers", themeColors: true });
 
 let pinnedNode: any = null;
 
@@ -763,6 +763,12 @@ figma.on("selectionchange", sendSelection);
 
 // ── Message handlers ─────────────────────────────────────────────────────────
 figma.ui.onmessage = async (msg) => {
+  // Handle resize messages from the UI
+  if (msg.type === "resize") {
+    figma.ui.resize(msg.width, msg.height);
+    return;
+  }
+
   const scope: "global" | "personal" = msg.scope === "personal" ? "personal" : "global";
 
   if (msg.type === "save-class") {
