@@ -657,8 +657,7 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
 // ─────────────────────────────────────────────────────────────────────────────
 // Storage  —  two scopes
 //   • personal  → figma.clientStorage  (device-local, private to this user)
-//   • global    → figma.root.setPluginData  (stored in the Figma file, shared
-//                 with all collaborators who open the plugin)
+//   • global    → figma.clientStorage  (device-local, global across files for this user)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const GLOBAL_STORAGE_KEY = "global-classes";
@@ -674,15 +673,15 @@ async function savePersonalClasses(classes: ClassDefinition[]): Promise<void> {
   await figma.clientStorage.setAsync(LOCAL_STORAGE_KEY, JSON.stringify(classes));
 }
 
-// ── Global  (root plugin data) ─────────────────────────────────────────────
-function loadGlobalClasses(): ClassDefinition[] {
-  const raw = figma.root.getPluginData(GLOBAL_STORAGE_KEY);
+// ── Global  (clientStorage) ─────────────────────────────────────────────
+async function loadGlobalClasses(): Promise<ClassDefinition[]> {
+  const raw = await figma.clientStorage.getAsync(GLOBAL_STORAGE_KEY);
   if (!raw) return [];
   try { return JSON.parse(raw) as ClassDefinition[]; } catch { return []; }
 }
 
-function saveGlobalClasses(classes: ClassDefinition[]): void {
-  figma.root.setPluginData(GLOBAL_STORAGE_KEY, JSON.stringify(classes));
+async function saveGlobalClasses(classes: ClassDefinition[]): Promise<void> {
+  await figma.clientStorage.setAsync(GLOBAL_STORAGE_KEY, JSON.stringify(classes));
 }
 
 // ── Shared helpers ──────────────────────────────────────────────────────────
@@ -732,12 +731,12 @@ function sendSelection() {
 
 // ── Helpers to load/save by scope ──────────────────────────────────────────
 async function loadClasses(scope: "global" | "personal"): Promise<ClassDefinition[]> {
-  if (scope === "global") return loadGlobalClasses();
-  return loadPersonalClasses();
+  if (scope === "global") return await loadGlobalClasses();
+  return await loadPersonalClasses();
 }
 
 async function saveClasses(scope: "global" | "personal", classes: ClassDefinition[]): Promise<void> {
-  if (scope === "global") saveGlobalClasses(classes);
+  if (scope === "global") await saveGlobalClasses(classes);
   else await savePersonalClasses(classes);
 }
 
@@ -808,7 +807,7 @@ figma.ui.onmessage = async (msg) => {
 
       await saveClasses(scope, classes);
       notifyLoaded(scope, classes);
-      figma.ui.postMessage({ type: "success", message: `Class "${msg.name}" saved (${scope}).` });
+      figma.ui.postMessage({ type: "success", message: `Preset "${msg.name}" saved (${scope}).` });
     } catch (err) {
       figma.ui.postMessage({ type: "error", message: `Save failed: ${String(err)}` });
     }
@@ -863,7 +862,7 @@ figma.ui.onmessage = async (msg) => {
     classes = classes.filter((c: ClassDefinition) => c.id !== msg.id);
     await saveClasses(scope, classes);
     notifyLoaded(scope, classes);
-    figma.ui.postMessage({ type: "success", message: "Class deleted." });
+    figma.ui.postMessage({ type: "success", message: "Preset deleted." });
   }
 
   if (msg.type === "delete-classes") {
@@ -873,7 +872,7 @@ figma.ui.onmessage = async (msg) => {
     classes = classes.filter((c: ClassDefinition) => !ids.includes(c.id));
     await saveClasses(scope, classes);
     notifyLoaded(scope, classes);
-    figma.ui.postMessage({ type: "success", message: `${ids.length} class${ids.length > 1 ? "es" : ""} deleted.` });
+    figma.ui.postMessage({ type: "success", message: `${ids.length} preset${ids.length > 1 ? "s" : ""} deleted.` });
   }
 
   if (msg.type === "import-classes") {

@@ -473,8 +473,8 @@
   async function savePersonalClasses(classes) {
     await figma.clientStorage.setAsync(LOCAL_STORAGE_KEY, JSON.stringify(classes));
   }
-  function loadGlobalClasses() {
-    const raw = figma.root.getPluginData(GLOBAL_STORAGE_KEY);
+  async function loadGlobalClasses() {
+    const raw = await figma.clientStorage.getAsync(GLOBAL_STORAGE_KEY);
     if (!raw) return [];
     try {
       return JSON.parse(raw);
@@ -482,8 +482,8 @@
       return [];
     }
   }
-  function saveGlobalClasses(classes) {
-    figma.root.setPluginData(GLOBAL_STORAGE_KEY, JSON.stringify(classes));
+  async function saveGlobalClasses(classes) {
+    await figma.clientStorage.setAsync(GLOBAL_STORAGE_KEY, JSON.stringify(classes));
   }
   function mergeClasses(existing, imported) {
     const map = /* @__PURE__ */ new Map();
@@ -520,11 +520,11 @@
     });
   }
   async function loadClasses(scope) {
-    if (scope === "global") return loadGlobalClasses();
-    return loadPersonalClasses();
+    if (scope === "global") return await loadGlobalClasses();
+    return await loadPersonalClasses();
   }
   async function saveClasses(scope, classes) {
-    if (scope === "global") saveGlobalClasses(classes);
+    if (scope === "global") await saveGlobalClasses(classes);
     else await savePersonalClasses(classes);
   }
   function notifyLoaded(scope, classes) {
@@ -585,7 +585,7 @@
         }
         await saveClasses(scope, classes);
         notifyLoaded(scope, classes);
-        figma.ui.postMessage({ type: "success", message: `Class "${msg.name}" saved (${scope}).` });
+        figma.ui.postMessage({ type: "success", message: `Preset "${msg.name}" saved (${scope}).` });
       } catch (err) {
         figma.ui.postMessage({ type: "error", message: `Save failed: ${String(err)}` });
       }
@@ -634,7 +634,7 @@
       classes = classes.filter((c) => c.id !== msg.id);
       await saveClasses(scope, classes);
       notifyLoaded(scope, classes);
-      figma.ui.postMessage({ type: "success", message: "Class deleted." });
+      figma.ui.postMessage({ type: "success", message: "Preset deleted." });
     }
     if (msg.type === "delete-classes") {
       const ids = msg.ids || [];
@@ -643,7 +643,7 @@
       classes = classes.filter((c) => !ids.includes(c.id));
       await saveClasses(scope, classes);
       notifyLoaded(scope, classes);
-      figma.ui.postMessage({ type: "success", message: `${ids.length} class${ids.length > 1 ? "es" : ""} deleted.` });
+      figma.ui.postMessage({ type: "success", message: `${ids.length} preset${ids.length > 1 ? "s" : ""} deleted.` });
     }
     if (msg.type === "import-classes") {
       try {
