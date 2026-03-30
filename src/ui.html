@@ -596,30 +596,6 @@
       background: var(--personal-accent);
     }
 
-    /* Class icon (Avatar-style) */
-    .class-icon {
-      width: 28px;
-      height: 28px;
-      border-radius: calc(var(--radius) - 2px);
-      background: var(--secondary);
-      border: 1px solid var(--border);
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--muted-foreground);
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 0.02em;
-      font-family: var(--font-mono);
-      transition: all var(--transition-fast);
-    }
-
-    .class-item.selected .class-icon {
-      background: hsl(240 3.7% 20%);
-      color: var(--foreground);
-      border-color: hsl(240 3.7% 25%);
-    }
 
     /* Class info */
     .class-info {
@@ -1415,9 +1391,6 @@
       });
       checkboxWrap.appendChild(checkbox);
 
-      const icon = document.createElement("div");
-      icon.className = "class-icon";
-      icon.textContent = cls.name.slice(0, 2).toUpperCase();
 
       const info = document.createElement("div");
       info.className = "class-info";
@@ -1458,7 +1431,6 @@
       });
 
       item.appendChild(checkboxWrap);
-      item.appendChild(icon);
       item.appendChild(info);
       item.appendChild(badge);
       item.appendChild(delBtn);
