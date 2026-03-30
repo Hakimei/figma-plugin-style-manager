@@ -98,64 +98,97 @@
   }
   .header-title svg { color: var(--muted-foreground); }
 
-  /* ── Tab nav ── */
-  .tab-nav {
+  /* ── Tabs (shadcn TabsList pattern) ── */
+  .tabs {
     display: flex;
-    background: var(--sidebar);
-    border-bottom: 1px solid var(--border);
+    flex-direction: column;
     flex-shrink: 0;
-    padding: 0 12px;
-    gap: 2px;
   }
-  .tab-btn {
+  .tabs-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--sidebar);
+  }
+  .tabs-list {
     display: inline-flex;
     align-items: center;
+    gap: 1px;
+    height: 32px;
+    background: var(--muted);
+    border-radius: calc(var(--radius));
+    padding: 3px;
+    flex-shrink: 0;
+  }
+  .tab-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     gap: 6px;
-    padding: 8px 12px 7px;
+    height: 100%;
+    padding: 0 12px;
     font-size: 13px;
     font-weight: 500;
     font-family: var(--font-sans);
     color: var(--muted-foreground);
     background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
+    border: 1px solid transparent;
+    border-radius: calc(var(--radius) - 2px);
     cursor: pointer;
-    transition: color var(--transition-fast), border-color var(--transition-fast);
+    transition: all var(--transition-fast);
     outline: none;
-    margin-bottom: -1px;
     white-space: nowrap;
     user-select: none;
-    border-radius: calc(var(--radius) - 2px) calc(var(--radius) - 2px) 0 0;
+    position: relative;
+    line-height: 1;
   }
-  .tab-btn:hover {
+  .tab-trigger:hover {
     color: var(--foreground);
-    background: hsl(240 3.7% 12%);
   }
-  .tab-btn.active[data-tab="global"] {
-    color: var(--global-accent);
-    border-bottom-color: var(--global-accent);
+  .tab-trigger:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 1px;
   }
-  .tab-btn.active[data-tab="personal"] {
-    color: var(--personal-accent);
-    border-bottom-color: var(--personal-accent);
+  /* Active state: shadcn bg-background + shadow */
+  .tab-trigger[data-state="active"] {
+    background: var(--background);
+    color: var(--foreground);
+    border-color: var(--border);
+    box-shadow: 0 1px 2px hsl(0 0% 0% / 0.15);
   }
+  /* Scope accent dots */
   .tab-dot {
     width: 6px;
     height: 6px;
     border-radius: 50%;
     flex-shrink: 0;
-    background: currentColor;
-    opacity: 0.6;
+    transition: all var(--transition-fast);
   }
-  .tab-btn.active .tab-dot { opacity: 1; }
+  .tab-trigger[data-tab="global"] .tab-dot {
+    background: var(--global-accent);
+    opacity: 0.4;
+  }
+  .tab-trigger[data-tab="personal"] .tab-dot {
+    background: var(--personal-accent);
+    opacity: 0.4;
+  }
+  .tab-trigger[data-state="active"][data-tab="global"] .tab-dot {
+    opacity: 1;
+    box-shadow: 0 0 6px hsl(217 91% 60% / 0.4);
+  }
+  .tab-trigger[data-state="active"][data-tab="personal"] .tab-dot {
+    opacity: 1;
+    box-shadow: 0 0 6px hsl(271 81% 65% / 0.4);
+  }
 
-  /* Tab actions (export/import) in tab bar */
+  /* Tab actions (export/import) beside tabs-list */
   .tab-actions {
     display: flex;
     gap: 4px;
     margin-left: auto;
     align-items: center;
-    padding: 4px 0;
   }
 
   /* ── Tab panels ── */
@@ -728,49 +761,53 @@
   </div>
 </div>
 
-<!-- Tab Navigation -->
-<div class="tab-nav">
-  <button class="tab-btn active" id="tabGlobal" data-tab="global">
-    <span class="tab-dot"></span>
-    Global
-  </button>
-  <button class="tab-btn" id="tabPersonal" data-tab="personal">
-    <span class="tab-dot"></span>
-    Personal
-  </button>
+<!-- Tabs (shadcn pattern: TabsList + actions in flex row) -->
+<div class="tabs">
+  <div class="tabs-header">
+    <div class="tabs-list" role="tablist">
+      <button class="tab-trigger" id="tabGlobal" data-tab="global" data-state="active" role="tab" aria-selected="true">
+        <span class="tab-dot"></span>
+        Global
+      </button>
+      <button class="tab-trigger" id="tabPersonal" data-tab="personal" data-state="inactive" role="tab" aria-selected="false">
+        <span class="tab-dot"></span>
+        Personal
+      </button>
+    </div>
 
-  <!-- Tab-scoped Export/Import (shown per active tab) -->
-  <div class="tab-actions">
-    <!-- Global export/import -->
-    <button class="btn btn-icon global-tint" id="globalExportBtn" title="Export Global Presets">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-        <polyline points="7 10 12 15 17 10"/>
-        <line x1="12" x2="12" y1="15" y2="3"/>
-      </svg>
-    </button>
-    <button class="btn btn-icon global-tint" id="globalImportBtn" title="Import Global Presets">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-        <polyline points="17 8 12 3 7 8"/>
-        <line x1="12" x2="12" y1="3" y2="15"/>
-      </svg>
-    </button>
-    <!-- Personal export/import -->
-    <button class="btn btn-icon personal-tint" id="personalExportBtn" title="Export Personal Presets" style="display:none;">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-        <polyline points="7 10 12 15 17 10"/>
-        <line x1="12" x2="12" y1="15" y2="3"/>
-      </svg>
-    </button>
-    <button class="btn btn-icon personal-tint" id="personalImportBtn" title="Import Personal Presets" style="display:none;">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-        <polyline points="17 8 12 3 7 8"/>
-        <line x1="12" x2="12" y1="3" y2="15"/>
-      </svg>
-    </button>
+    <!-- Tab-scoped Export/Import actions -->
+    <div class="tab-actions">
+      <!-- Global export/import -->
+      <button class="btn btn-icon global-tint" id="globalExportBtn" title="Export Global Presets">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" x2="12" y1="15" y2="3"/>
+        </svg>
+      </button>
+      <button class="btn btn-icon global-tint" id="globalImportBtn" title="Import Global Presets">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" x2="12" y1="3" y2="15"/>
+        </svg>
+      </button>
+      <!-- Personal export/import -->
+      <button class="btn btn-icon personal-tint" id="personalExportBtn" title="Export Personal Presets" style="display:none;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" x2="12" y1="15" y2="3"/>
+        </svg>
+      </button>
+      <button class="btn btn-icon personal-tint" id="personalImportBtn" title="Import Personal Presets" style="display:none;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" x2="12" y1="3" y2="15"/>
+        </svg>
+      </button>
+    </div>
   </div>
 </div>
 
@@ -976,12 +1013,16 @@
     if (msg.type === "error") showToast(msg.message, "error");
   };
 
-  // ── Tab switching ──
+  // ── Tab switching (shadcn data-state pattern) ──
   function switchTab(tab) {
     activeTab = tab;
-    document.querySelectorAll(".tab-btn").forEach((btn) => {
-      btn.classList.toggle("active", btn.dataset.tab === tab);
+    // Update trigger states (data-state + aria-selected)
+    document.querySelectorAll(".tab-trigger").forEach((btn) => {
+      const isActive = btn.dataset.tab === tab;
+      btn.dataset.state = isActive ? "active" : "inactive";
+      btn.setAttribute("aria-selected", isActive ? "true" : "false");
     });
+    // Toggle tab panels
     document.querySelectorAll(".tab-panel").forEach((panel) => {
       panel.classList.toggle("active", panel.id === "panel" + capitalize(tab));
     });
