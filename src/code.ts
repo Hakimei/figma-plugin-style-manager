@@ -866,6 +866,16 @@ figma.ui.onmessage = async (msg) => {
     figma.ui.postMessage({ type: "success", message: "Class deleted." });
   }
 
+  if (msg.type === "delete-classes") {
+    const ids: string[] = msg.ids || [];
+    if (ids.length === 0) return;
+    let classes = await loadClasses(scope);
+    classes = classes.filter((c: ClassDefinition) => !ids.includes(c.id));
+    await saveClasses(scope, classes);
+    notifyLoaded(scope, classes);
+    figma.ui.postMessage({ type: "success", message: `${ids.length} class${ids.length > 1 ? "es" : ""} deleted.` });
+  }
+
   if (msg.type === "import-classes") {
     try {
       if (!Array.isArray(msg.classes)) throw new Error("Invalid format");
