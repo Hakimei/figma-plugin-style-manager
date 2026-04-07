@@ -534,13 +534,17 @@
     });
   }
   (async () => {
-    const [globalCls, personalCls, githubSettings] = await Promise.all([
+    const [globalCls, personalCls, githubSettings, globalMeta, personalMeta] = await Promise.all([
       loadClasses("global"),
       loadClasses("personal"),
-      figma.clientStorage.getAsync("github-settings")
+      figma.clientStorage.getAsync("github-settings"),
+      figma.clientStorage.getAsync("global-last-import-sync"),
+      figma.clientStorage.getAsync("personal-last-import-sync")
     ]);
     figma.ui.postMessage({ type: "global-classes-loaded", classes: globalCls });
     figma.ui.postMessage({ type: "personal-classes-loaded", classes: personalCls });
+    if (globalMeta) figma.ui.postMessage({ type: "meta-updated", scope: "global", date: globalMeta });
+    if (personalMeta) figma.ui.postMessage({ type: "meta-updated", scope: "personal", date: personalMeta });
     if (githubSettings) {
       try {
         figma.ui.postMessage({ type: "github-settings-loaded", settings: JSON.parse(githubSettings) });
@@ -658,8 +662,11 @@
         const existing = await loadClasses(scope);
         const merged = mergeClasses(existing, msg.classes);
         await saveClasses(scope, merged);
+        const now = (/* @__PURE__ */ new Date()).toISOString();
+        await figma.clientStorage.setAsync(`${scope}-last-import-sync`, now);
         notifyLoaded(scope, merged);
         figma.ui.postMessage({ type: "success", message: `Imported ${scope} presets successfully.` });
+        figma.ui.postMessage({ type: "meta-updated", scope, date: now });
       } catch (e) {
         figma.ui.postMessage({ type: "error", message: `Import failed: ${e}` });
       }
@@ -668,8 +675,11 @@
       try {
         if (!Array.isArray(msg.classes)) throw new Error("Invalid format");
         await saveClasses(scope, msg.classes);
+        const now = (/* @__PURE__ */ new Date()).toISOString();
+        await figma.clientStorage.setAsync(`${scope}-last-import-sync`, now);
         notifyLoaded(scope, msg.classes);
         figma.ui.postMessage({ type: "success", message: `Pulled from GitHub and updated presets.` });
+        figma.ui.postMessage({ type: "meta-updated", scope, date: now });
       } catch (e) {
         figma.ui.postMessage({ type: "error", message: `Pull failed: ${e}` });
       }

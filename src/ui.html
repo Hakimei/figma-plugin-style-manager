@@ -1402,6 +1402,23 @@
           }
         });
       }
+      if (msg.type === "meta-updated") {
+        const { scope, date } = msg;
+        const banner = document.querySelector(`.scope-banner.${scope}-banner`);
+        if (banner) {
+          let metaEl = banner.querySelector('.banner-meta');
+          if (!metaEl) {
+            metaEl = document.createElement('span');
+            metaEl.className = 'banner-meta';
+            metaEl.style.marginLeft = 'auto';
+            metaEl.style.opacity = '0.7';
+            metaEl.style.fontSize = '10px';
+            metaEl.style.alignSelf = 'flex-end';
+            banner.appendChild(metaEl);
+          }
+          metaEl.textContent = `Latest update: ${formatDate(new Date(date))}`;
+        }
+      }
       if (msg.type === "success") showToast(msg.message, "success");
       if (msg.type === "error") showToast(msg.message, "error");
     };
