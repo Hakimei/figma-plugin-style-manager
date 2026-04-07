@@ -85,6 +85,7 @@
       overflow: hidden;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
+      min-width: 340px;
     }
 
     /* ── Header (shadcn Sidebar Header pattern) ── */
@@ -1768,7 +1769,7 @@
     (() => {
       const handle = document.getElementById("resizeHandle");
       const overlay = document.getElementById("resizeOverlay");
-      const MIN_W = 280;
+      const MIN_W = 340;
       const MIN_H = 400;
       const MAX_W = 800;
       const MAX_H = 1200;

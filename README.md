@@ -11,8 +11,8 @@ A powerful Figma plugin that enables "Class-based" design by treating node trees
 - **Individual Stroke Support**: Preserves specific border weights for top, right, bottom, and left sides.
 - **Text Style & Variable Support**: Preserves text style references and complex text property variable bindings (font size, letter spacing, etc.).
 - **Variable Support**: Preserves variable bindings for colors, spacing, and numbers.
-- **Local Persistence**: Stores your personal classes in `clientStorage` for use across different files.
-- **Export & Import**: Export your saved class presets to a `.json` file and import them anywhere.
+- **Local Persistence**: Stores your personal classes in `clientStorage` for use across different Figma files.
+- **Sync, Export & Import**: Sync your class presets with a GitHub repository, or export them to a `.json` file, and import them anywhere.
 - **Group & Search**: Organize your classes with labels and find them instantly with the built-in search.
 
 ## Technology Stack
