@@ -1848,11 +1848,15 @@
 
       try {
         const url = `https://api.github.com/repos/${settings.repo}/contents/${settings.path}?ref=${settings.branch}`;
+        console.log("Attempting PULL from:", url);
         const res = await fetch(url, {
           headers: {
             'Authorization': `token ${settings.token}`,
             'Accept': 'application/vnd.github.v3+json'
           }
+        }).catch(err => {
+          console.error("Fetch Network Error (PULL):", err);
+          throw new Error("Network Error: Failed to fetch. Check console for details.");
         });
 
         if (!res.ok) {
@@ -1924,10 +1928,14 @@
         };
         if (currentSha) bodyObj.sha = currentSha;
 
+        console.log("Attempting PUSH to:", url);
         const pushRes = await fetch(url, {
           method: 'PUT',
           headers,
           body: JSON.stringify(bodyObj)
+        }).catch(err => {
+          console.error("Fetch Network Error (PUSH):", err);
+          throw new Error("Network Error: Failed to fetch. Check console for details.");
         });
 
         if (!pushRes.ok) {

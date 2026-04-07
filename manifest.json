@@ -9,7 +9,8 @@
   ],
   "networkAccess": {
     "allowedDomains": [
-      "https://api.github.com"
+      "https://api.github.com",
+      "https://github.com"
     ]
   }
 }
