@@ -706,7 +706,7 @@ function generateId(): string {
 // Main plugin logic
 // ─────────────────────────────────────────────────────────────────────────────
 
-figma.showUI(__html__, { width: 320, height: 560, title: "Styles Managers", themeColors: true });
+figma.showUI(__html__, { width: 360, height: 560, title: "Styles Managers", themeColors: true });
 
 let pinnedNode: any = null;
 
@@ -749,12 +749,22 @@ function notifyLoaded(scope: "global" | "personal", classes: ClassDefinition[]) 
 
 // ── Init ────────────────────────────────────────────────────────────────────
 (async () => {
-  const [globalCls, personalCls] = await Promise.all([
+  const [globalCls, personalCls, githubSettings, globalMeta, personalMeta] = await Promise.all([
     loadClasses("global"),
     loadClasses("personal"),
+    figma.clientStorage.getAsync("github-settings"),
+    figma.clientStorage.getAsync("global-last-import-sync"),
+    figma.clientStorage.getAsync("personal-last-import-sync"),
   ]);
   figma.ui.postMessage({ type: "global-classes-loaded", classes: globalCls });
   figma.ui.postMessage({ type: "personal-classes-loaded", classes: personalCls });
+  if (globalMeta) figma.ui.postMessage({ type: "meta-updated", scope: "global", date: globalMeta });
+  if (personalMeta) figma.ui.postMessage({ type: "meta-updated", scope: "personal", date: personalMeta });
+  if (githubSettings) {
+    try {
+      figma.ui.postMessage({ type: "github-settings-loaded", settings: JSON.parse(githubSettings) });
+    } catch { }
+  }
   sendSelection();
 })();
 
@@ -881,11 +891,46 @@ figma.ui.onmessage = async (msg) => {
       const existing = await loadClasses(scope);
       const merged = mergeClasses(existing, msg.classes as ClassDefinition[]);
       await saveClasses(scope, merged);
+
+      const now = new Date().toISOString();
+      await figma.clientStorage.setAsync(`${scope}-last-import-sync`, now);
+
       notifyLoaded(scope, merged);
       figma.ui.postMessage({ type: "success", message: `Imported ${scope} presets successfully.` });
+      figma.ui.postMessage({ type: "meta-updated", scope, date: now });
     } catch (e) {
       figma.ui.postMessage({ type: "error", message: `Import failed: ${e}` });
     }
+  }
+
+  if (msg.type === "overwrite-classes") {
+    try {
+      if (!Array.isArray(msg.classes)) throw new Error("Invalid format");
+      await saveClasses(scope, msg.classes as ClassDefinition[]);
+
+      const now = new Date().toISOString();
+      await figma.clientStorage.setAsync(`${scope}-last-import-sync`, now);
+
+      notifyLoaded(scope, msg.classes as ClassDefinition[]);
+      figma.ui.postMessage({ type: "success", message: `Pulled from GitHub and updated presets.` });
+      figma.ui.postMessage({ type: "meta-updated", scope, date: now });
+    } catch (e) {
+      figma.ui.postMessage({ type: "error", message: `Pull failed: ${e}` });
+    }
+  }
+
+  if (msg.type === "save-github-settings") {
+    try {
+      await figma.clientStorage.setAsync("github-settings", JSON.stringify(msg.settings));
+      figma.ui.postMessage({ type: "success", message: "GitHub settings saved." });
+    } catch (err) {
+      figma.ui.postMessage({ type: "error", message: `Failed to save GitHub settings: ${err}` });
+    }
+  }
+
+  if (msg.type === "push-global-classes") {
+    const globalCls = await loadClasses("global");
+    figma.ui.postMessage({ type: "push-global-ready", classes: globalCls });
   }
 };
 
