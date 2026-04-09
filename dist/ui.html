@@ -30,13 +30,13 @@
       --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
 
       /* Tab accent colors */
-      --global-accent: hsl(217 91% 60%);
+      --global-accent: hsl(206 100% 50%);
       --global-accent-muted: hsl(217 91% 60% / 0.12);
       --global-accent-border: hsl(217 91% 60% / 0.3);
-      --personal-accent: hsl(271 81% 65%);
+      --personal-accent: hsl(292 43% 51%);
       --personal-accent-muted: hsl(271 81% 65% / 0.12);
       --personal-accent-border: hsl(271 81% 65% / 0.3);
-      --sync-accent: hsl(142 76% 36%);
+      --sync-accent: hsl(150 55% 42%);
       --sync-accent-muted: hsl(142 76% 36% / 0.12);
       --sync-accent-border: hsl(142 76% 36% / 0.3);
     }
@@ -571,7 +571,7 @@
 
     /* Show thumb on hover of scrollable areas */
     .list-container:hover::-webkit-scrollbar-thumb,
-    #panelSync > div:hover::-webkit-scrollbar-thumb,
+    #panelSync>div:hover::-webkit-scrollbar-thumb,
     .scroll-area:hover::-webkit-scrollbar-thumb,
     [style*="overflow-y: auto"]:hover::-webkit-scrollbar-thumb,
     [style*="overflow: auto"]:hover::-webkit-scrollbar-thumb {
@@ -584,7 +584,7 @@
 
     /* Specific fix for scrollable areas */
     .scroll-area,
-    #panelSync > div {
+    #panelSync>div {
       overflow-y: auto;
       overflow-y: overlay;
       scrollbar-width: thin;
@@ -593,7 +593,7 @@
     }
 
     .scroll-area:hover,
-    #panelSync > div:hover {
+    #panelSync>div:hover {
       scrollbar-color: var(--muted-foreground) transparent;
     }
 
