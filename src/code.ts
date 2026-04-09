@@ -706,7 +706,7 @@ function generateId(): string {
 // Main plugin logic
 // ─────────────────────────────────────────────────────────────────────────────
 
-figma.showUI(__html__, { width: 360, height: 560, title: "Styles Managers", themeColors: true });
+figma.showUI(__html__, { width: 365, height: 560, title: "Styles Managers", themeColors: true });
 
 let pinnedNode: any = null;
 
@@ -749,15 +749,17 @@ function notifyLoaded(scope: "global" | "personal", classes: ClassDefinition[]) 
 
 // ── Init ────────────────────────────────────────────────────────────────────
 (async () => {
-  const [globalCls, personalCls, githubSettings, globalMeta, personalMeta] = await Promise.all([
+  const [globalCls, personalCls, githubSettings, globalMeta, personalMeta, savedTheme] = await Promise.all([
     loadClasses("global"),
     loadClasses("personal"),
     figma.clientStorage.getAsync("github-settings"),
     figma.clientStorage.getAsync("global-last-import-sync"),
     figma.clientStorage.getAsync("personal-last-import-sync"),
+    figma.clientStorage.getAsync("plugin-theme"),
   ]);
   figma.ui.postMessage({ type: "global-classes-loaded", classes: globalCls });
   figma.ui.postMessage({ type: "personal-classes-loaded", classes: personalCls });
+  if (savedTheme) figma.ui.postMessage({ type: "theme-loaded", theme: savedTheme });
   if (globalMeta) figma.ui.postMessage({ type: "meta-updated", scope: "global", date: globalMeta });
   if (personalMeta) figma.ui.postMessage({ type: "meta-updated", scope: "personal", date: personalMeta });
   if (githubSettings) {
@@ -775,6 +777,11 @@ figma.ui.onmessage = async (msg) => {
   // Handle resize messages from the UI
   if (msg.type === "resize") {
     figma.ui.resize(msg.width, msg.height);
+    return;
+  }
+
+  if (msg.type === "save-theme") {
+    await figma.clientStorage.setAsync("plugin-theme", msg.theme);
     return;
   }
 
