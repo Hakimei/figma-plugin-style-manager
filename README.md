@@ -6,7 +6,7 @@ A powerful Figma plugin that enables "Class-based" design by treating node trees
 
 ## Features
 
-- **Deep Serialization**: Captures nested children, auto-layout settings, fills, strokes (uniform and individual weights), horizontal/vertical padding, effects, and bound variables.
+- **Deep Serialization**: Captures frame, and nested frame, auto-layout, fills, typography, opacity, corner radius, strokes, effects, and bound variables.
 - **Smart Restoration**: Recreates complex node trees with pixel perfection, automatically loading required fonts.
 - **Individual Stroke Support**: Preserves specific border weights for top, right, bottom, and left sides.
 - **Text Style & Variable Support**: Preserves text style references and complex text property variable bindings (font size, letter spacing, etc.).

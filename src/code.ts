@@ -25,13 +25,14 @@ interface GradientPaintDef {
 type PaintDef = SolidPaintDef | GradientPaintDef | { type: string; boundVariables?: { [property: string]: VariableAlias } };
 
 interface ShadowDef {
-  type: "DROP_SHADOW" | "INNER_SHADOW";
-  color: PluginRGBA;
-  offset: { x: number; y: number };
+  type: "DROP_SHADOW" | "INNER_SHADOW" | "LAYER_BLUR" | "BACKGROUND_BLUR";
+  color?: PluginRGBA;
+  offset?: { x: number; y: number };
   radius: number;
-  spread: number;
-  blendMode: string;
+  spread?: number;
+  blendMode?: string;
   visible: boolean;
+  showShadowBehindNode?: boolean;
   boundVariables?: { [property: string]: VariableAlias };
 }
 
@@ -51,7 +52,9 @@ interface SerializedNode {
   boundVariables?: { [property: string]: VariableAlias | VariableAlias[] };
   // Shared visual
   fills?: PaintDef[];
+  fillStyleId?: string;
   strokes?: PaintDef[];
+  strokeStyleId?: string;
   strokeWeight?: number;
   strokeTopWeight?: number;
   strokeRightWeight?: number;
@@ -59,6 +62,7 @@ interface SerializedNode {
   strokeLeftWeight?: number;
   strokeAlign?: string;
   effects?: ShadowDef[];
+  effectStyleId?: string;
   // Shared corners
   cornerRadius?: number;       // -1 = mixed corners
   topLeftRadius?: number;
@@ -149,23 +153,33 @@ function serializePaint(paint: Paint): PaintDef {
 }
 
 function serializeEffect(effect: Effect): ShadowDef | null {
+  const def: any = {
+    type: effect.type,
+    visible: effect.visible,
+  };
+
   if (effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW") {
     const e = effect as DropShadowEffect | InnerShadowEffect;
-    const def: any = {
-      type: effect.type,
-      color: { r: e.color.r, g: e.color.g, b: e.color.b, a: e.color.a },
-      offset: { x: e.offset.x, y: e.offset.y },
-      radius: e.radius,
-      spread: (e as DropShadowEffect).spread ?? 0,
-      blendMode: e.blendMode,
-      visible: e.visible,
-    };
-    if (e.boundVariables && Object.keys(e.boundVariables).length > 0) {
-      def.boundVariables = JSON.parse(JSON.stringify(e.boundVariables));
-    }
-    return def;
+    def.radius = e.radius;
+    def.color = { r: e.color.r, g: e.color.g, b: e.color.b, a: e.color.a };
+    def.offset = { x: e.offset.x, y: e.offset.y };
+    def.spread = (e as DropShadowEffect).spread ?? 0;
+    def.blendMode = e.blendMode;
+    def.showShadowBehindNode = (e as DropShadowEffect).showShadowBehindNode ?? false;
+  } else if (effect.type === "LAYER_BLUR" || effect.type === "BACKGROUND_BLUR") {
+    const e = effect as BlurEffect;
+    def.radius = e.radius;
+  } else {
+    // Unsupported effect types
+    return null;
   }
-  return null;
+
+  const e = effect as any;
+  if (e.boundVariables && Object.keys(e.boundVariables).length > 0) {
+    def.boundVariables = JSON.parse(JSON.stringify(e.boundVariables));
+  }
+
+  return def;
 }
 
 function safeCornerRadius(node: any): number {
@@ -221,10 +235,14 @@ function serializeNode(node: SceneNode): SerializedNode {
     if ("strokeRightWeight" in node) base.strokeRightWeight = (node as any).strokeRightWeight as number;
     if ("strokeBottomWeight" in node) base.strokeBottomWeight = (node as any).strokeBottomWeight as number;
     if ("strokeLeftWeight" in node) base.strokeLeftWeight = (node as any).strokeLeftWeight as number;
+  }
 
-    if ("effects" in node) {
-      base.effects = (node.effects as Effect[]).map(serializeEffect).filter((e): e is ShadowDef => e !== null);
-    }
+  if ("fillStyleId" in node && node.fillStyleId) base.fillStyleId = node.fillStyleId as string;
+  if ("strokeStyleId" in node && node.strokeStyleId) base.strokeStyleId = node.strokeStyleId as string;
+  if ("effectStyleId" in node && node.effectStyleId) base.effectStyleId = node.effectStyleId as string;
+
+  if ("effects" in node) {
+    base.effects = (node.effects as Effect[]).map(serializeEffect).filter((e): e is ShadowDef => e !== null);
   }
 
   // Rectangle-specific corners
@@ -370,25 +388,23 @@ function applyEffects(node: any, effects: ShadowDef[] | undefined) {
   if (!effects) return;
   node.effects = effects.map((e) => {
     let effect: any;
-    if (e.type === "DROP_SHADOW") {
+    if (e.type === "DROP_SHADOW" || e.type === "INNER_SHADOW") {
       effect = {
-        type: "DROP_SHADOW",
-        color: e.color,
-        offset: e.offset,
+        type: e.type,
+        color: e.color!,
+        offset: e.offset!,
         radius: e.radius,
-        spread: e.spread,
-        blendMode: e.blendMode as BlendMode,
+        spread: e.spread ?? 0,
+        blendMode: (e.blendMode as BlendMode) || "NORMAL",
         visible: e.visible,
-        showShadowBehindNode: false,
       };
+      if (e.type === "DROP_SHADOW") {
+        effect.showShadowBehindNode = e.showShadowBehindNode ?? false;
+      }
     } else {
       effect = {
-        type: "INNER_SHADOW",
-        color: e.color,
-        offset: e.offset,
+        type: e.type,
         radius: e.radius,
-        spread: e.spread,
-        blendMode: e.blendMode as BlendMode,
         visible: e.visible,
       };
     }
@@ -489,6 +505,10 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
       left: data.strokeLeftWeight,
     });
     applyEffects(frame, data.effects);
+    if (data.fillStyleId) try { frame.fillStyleId = data.fillStyleId; } catch { }
+    if (data.strokeStyleId) try { frame.strokeStyleId = data.strokeStyleId; } catch { }
+    if (data.effectStyleId) try { frame.effectStyleId = data.effectStyleId; } catch { }
+
     applyCorners(frame, data);
     applyFrameLayout(frame, data);
     applyBaseLayout(frame, data);
@@ -527,6 +547,8 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
       group.opacity = data.opacity;
       group.blendMode = data.blendMode as BlendMode;
       group.visible = data.visible;
+      applyEffects(group, data.effects);
+      if (data.effectStyleId) try { group.effectStyleId = data.effectStyleId; } catch { }
       tempFrame.remove();
       node = group;
     } else {
@@ -538,6 +560,10 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
         bottom: data.strokeBottomWeight,
         left: data.strokeLeftWeight,
       });
+      applyEffects(tempFrame, data.effects);
+      if (data.fillStyleId) try { tempFrame.fillStyleId = data.fillStyleId; } catch { }
+      if (data.strokeStyleId) try { tempFrame.strokeStyleId = data.strokeStyleId; } catch { }
+      if (data.effectStyleId) try { tempFrame.effectStyleId = data.effectStyleId; } catch { }
       node = tempFrame;
     }
   }
@@ -560,6 +586,10 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
       left: data.strokeLeftWeight,
     });
     applyEffects(rect, data.effects);
+    if (data.fillStyleId) try { rect.fillStyleId = data.fillStyleId; } catch { }
+    if (data.strokeStyleId) try { rect.strokeStyleId = data.strokeStyleId; } catch { }
+    if (data.effectStyleId) try { rect.effectStyleId = data.effectStyleId; } catch { }
+
     applyCorners(rect, data);
     applyBaseLayout(rect, data);
     applyBoundVariables(rect, data.boundVariables);
@@ -580,6 +610,10 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
     applyFills(el, data.fills);
     applyStrokes(el, data.strokes, data.strokeWeight, data.strokeAlign);
     applyEffects(el, data.effects);
+    if (data.fillStyleId) try { el.fillStyleId = data.fillStyleId; } catch { }
+    if (data.strokeStyleId) try { el.strokeStyleId = data.strokeStyleId; } catch { }
+    if (data.effectStyleId) try { el.effectStyleId = data.effectStyleId; } catch { }
+
     applyBaseLayout(el, data);
     applyBoundVariables(el, data.boundVariables);
     parent.appendChild(el);
@@ -597,6 +631,10 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
     line.blendMode = data.blendMode as BlendMode;
     line.visible = data.visible;
     applyStrokes(line, data.strokes, data.strokeWeight, data.strokeAlign);
+    applyEffects(line, data.effects);
+    if (data.strokeStyleId) try { line.strokeStyleId = data.strokeStyleId; } catch { }
+    if (data.effectStyleId) try { line.effectStyleId = data.effectStyleId; } catch { }
+
     applyBaseLayout(line, data);
     applyBoundVariables(line, data.boundVariables);
     parent.appendChild(line);
@@ -632,6 +670,9 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
     }
     applyFills(text, data.fills);
     applyEffects(text, data.effects);
+    if (data.fillStyleId) try { text.fillStyleId = data.fillStyleId; } catch { }
+    if (data.effectStyleId) try { text.effectStyleId = data.effectStyleId; } catch { }
+
     applyBaseLayout(text, data);
     applyBoundVariables(text, data.boundVariables);
     parent.appendChild(text);
@@ -647,6 +688,9 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
     placeholder.opacity = data.opacity;
     placeholder.visible = data.visible;
     applyFills(placeholder, data.fills);
+    applyEffects(placeholder, data.effects);
+    if (data.fillStyleId) try { placeholder.fillStyleId = data.fillStyleId; } catch { }
+    if (data.effectStyleId) try { placeholder.effectStyleId = data.effectStyleId; } catch { }
     parent.appendChild(placeholder);
     node = placeholder;
   }

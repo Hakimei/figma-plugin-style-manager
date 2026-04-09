@@ -27,24 +27,30 @@
     return def;
   }
   function serializeEffect(effect) {
-    var _a;
+    var _a, _b;
+    const def = {
+      type: effect.type,
+      visible: effect.visible
+    };
     if (effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW") {
-      const e = effect;
-      const def = {
-        type: effect.type,
-        color: { r: e.color.r, g: e.color.g, b: e.color.b, a: e.color.a },
-        offset: { x: e.offset.x, y: e.offset.y },
-        radius: e.radius,
-        spread: (_a = e.spread) != null ? _a : 0,
-        blendMode: e.blendMode,
-        visible: e.visible
-      };
-      if (e.boundVariables && Object.keys(e.boundVariables).length > 0) {
-        def.boundVariables = JSON.parse(JSON.stringify(e.boundVariables));
-      }
-      return def;
+      const e2 = effect;
+      def.radius = e2.radius;
+      def.color = { r: e2.color.r, g: e2.color.g, b: e2.color.b, a: e2.color.a };
+      def.offset = { x: e2.offset.x, y: e2.offset.y };
+      def.spread = (_a = e2.spread) != null ? _a : 0;
+      def.blendMode = e2.blendMode;
+      def.showShadowBehindNode = (_b = e2.showShadowBehindNode) != null ? _b : false;
+    } else if (effect.type === "LAYER_BLUR" || effect.type === "BACKGROUND_BLUR") {
+      const e2 = effect;
+      def.radius = e2.radius;
+    } else {
+      return null;
     }
-    return null;
+    const e = effect;
+    if (e.boundVariables && Object.keys(e.boundVariables).length > 0) {
+      def.boundVariables = JSON.parse(JSON.stringify(e.boundVariables));
+    }
+    return def;
   }
   function safeCornerRadius(node) {
     return typeof node.cornerRadius === "symbol" ? -1 : node.cornerRadius || 0;
@@ -89,9 +95,12 @@
       if ("strokeRightWeight" in node) base.strokeRightWeight = node.strokeRightWeight;
       if ("strokeBottomWeight" in node) base.strokeBottomWeight = node.strokeBottomWeight;
       if ("strokeLeftWeight" in node) base.strokeLeftWeight = node.strokeLeftWeight;
-      if ("effects" in node) {
-        base.effects = node.effects.map(serializeEffect).filter((e) => e !== null);
-      }
+    }
+    if ("fillStyleId" in node && node.fillStyleId) base.fillStyleId = node.fillStyleId;
+    if ("strokeStyleId" in node && node.strokeStyleId) base.strokeStyleId = node.strokeStyleId;
+    if ("effectStyleId" in node && node.effectStyleId) base.effectStyleId = node.effectStyleId;
+    if ("effects" in node) {
+      base.effects = node.effects.map(serializeEffect).filter((e) => e !== null);
     }
     if (node.type === "RECTANGLE" || node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE") {
       const r = node;
@@ -209,26 +218,25 @@
   function applyEffects(node, effects) {
     if (!effects) return;
     node.effects = effects.map((e) => {
+      var _a, _b;
       let effect;
-      if (e.type === "DROP_SHADOW") {
+      if (e.type === "DROP_SHADOW" || e.type === "INNER_SHADOW") {
         effect = {
-          type: "DROP_SHADOW",
+          type: e.type,
           color: e.color,
           offset: e.offset,
           radius: e.radius,
-          spread: e.spread,
-          blendMode: e.blendMode,
-          visible: e.visible,
-          showShadowBehindNode: false
+          spread: (_a = e.spread) != null ? _a : 0,
+          blendMode: e.blendMode || "NORMAL",
+          visible: e.visible
         };
+        if (e.type === "DROP_SHADOW") {
+          effect.showShadowBehindNode = (_b = e.showShadowBehindNode) != null ? _b : false;
+        }
       } else {
         effect = {
-          type: "INNER_SHADOW",
-          color: e.color,
-          offset: e.offset,
+          type: e.type,
           radius: e.radius,
-          spread: e.spread,
-          blendMode: e.blendMode,
           visible: e.visible
         };
       }
@@ -314,6 +322,18 @@
         left: data.strokeLeftWeight
       });
       applyEffects(frame, data.effects);
+      if (data.fillStyleId) try {
+        frame.fillStyleId = data.fillStyleId;
+      } catch (e) {
+      }
+      if (data.strokeStyleId) try {
+        frame.strokeStyleId = data.strokeStyleId;
+      } catch (e) {
+      }
+      if (data.effectStyleId) try {
+        frame.effectStyleId = data.effectStyleId;
+      } catch (e) {
+      }
       applyCorners(frame, data);
       applyFrameLayout(frame, data);
       applyBaseLayout(frame, data);
@@ -345,6 +365,11 @@
         group.opacity = data.opacity;
         group.blendMode = data.blendMode;
         group.visible = data.visible;
+        applyEffects(group, data.effects);
+        if (data.effectStyleId) try {
+          group.effectStyleId = data.effectStyleId;
+        } catch (e) {
+        }
         tempFrame.remove();
         node = group;
       } else {
@@ -356,6 +381,19 @@
           bottom: data.strokeBottomWeight,
           left: data.strokeLeftWeight
         });
+        applyEffects(tempFrame, data.effects);
+        if (data.fillStyleId) try {
+          tempFrame.fillStyleId = data.fillStyleId;
+        } catch (e) {
+        }
+        if (data.strokeStyleId) try {
+          tempFrame.strokeStyleId = data.strokeStyleId;
+        } catch (e) {
+        }
+        if (data.effectStyleId) try {
+          tempFrame.effectStyleId = data.effectStyleId;
+        } catch (e) {
+        }
         node = tempFrame;
       }
     } else if (data.type === "RECTANGLE") {
@@ -376,6 +414,18 @@
         left: data.strokeLeftWeight
       });
       applyEffects(rect, data.effects);
+      if (data.fillStyleId) try {
+        rect.fillStyleId = data.fillStyleId;
+      } catch (e) {
+      }
+      if (data.strokeStyleId) try {
+        rect.strokeStyleId = data.strokeStyleId;
+      } catch (e) {
+      }
+      if (data.effectStyleId) try {
+        rect.effectStyleId = data.effectStyleId;
+      } catch (e) {
+      }
       applyCorners(rect, data);
       applyBaseLayout(rect, data);
       applyBoundVariables(rect, data.boundVariables);
@@ -394,6 +444,18 @@
       applyFills(el, data.fills);
       applyStrokes(el, data.strokes, data.strokeWeight, data.strokeAlign);
       applyEffects(el, data.effects);
+      if (data.fillStyleId) try {
+        el.fillStyleId = data.fillStyleId;
+      } catch (e) {
+      }
+      if (data.strokeStyleId) try {
+        el.strokeStyleId = data.strokeStyleId;
+      } catch (e) {
+      }
+      if (data.effectStyleId) try {
+        el.effectStyleId = data.effectStyleId;
+      } catch (e) {
+      }
       applyBaseLayout(el, data);
       applyBoundVariables(el, data.boundVariables);
       parent.appendChild(el);
@@ -409,6 +471,15 @@
       line.blendMode = data.blendMode;
       line.visible = data.visible;
       applyStrokes(line, data.strokes, data.strokeWeight, data.strokeAlign);
+      applyEffects(line, data.effects);
+      if (data.strokeStyleId) try {
+        line.strokeStyleId = data.strokeStyleId;
+      } catch (e) {
+      }
+      if (data.effectStyleId) try {
+        line.effectStyleId = data.effectStyleId;
+      } catch (e) {
+      }
       applyBaseLayout(line, data);
       applyBoundVariables(line, data.boundVariables);
       parent.appendChild(line);
@@ -442,6 +513,14 @@
       }
       applyFills(text, data.fills);
       applyEffects(text, data.effects);
+      if (data.fillStyleId) try {
+        text.fillStyleId = data.fillStyleId;
+      } catch (e) {
+      }
+      if (data.effectStyleId) try {
+        text.effectStyleId = data.effectStyleId;
+      } catch (e) {
+      }
       applyBaseLayout(text, data);
       applyBoundVariables(text, data.boundVariables);
       parent.appendChild(text);
@@ -455,6 +534,15 @@
       placeholder.opacity = data.opacity;
       placeholder.visible = data.visible;
       applyFills(placeholder, data.fills);
+      applyEffects(placeholder, data.effects);
+      if (data.fillStyleId) try {
+        placeholder.fillStyleId = data.fillStyleId;
+      } catch (e) {
+      }
+      if (data.effectStyleId) try {
+        placeholder.effectStyleId = data.effectStyleId;
+      } catch (e) {
+      }
       parent.appendChild(placeholder);
       node = placeholder;
     }
