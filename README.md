@@ -59,7 +59,6 @@ npm run dev
 ## Project Structure
 
 ```text
-├── .agents/           # AI behavior and skill definitions
 ├── src/
 │   ├── code.ts        # Main plugin sandbox logic (Node API)
 │   └── ui.html        # Plugin UI (HTML/CSS/JS)
@@ -71,7 +70,7 @@ npm run dev
 ## Core Workflows
 
 ### Saving a Class
-1. Select a **Frame**, **Component**, or **Instance** on the Figma canvas.
+1. Select a **Frame**, **Component** or **Instance Component** on the Figma canvas.
 2. Give it a **Name** (e.g., `Card / Default`) and an optional **Label** for grouping.
 3. Click **Save Class**. The node tree is now serialized and stored locally.
 

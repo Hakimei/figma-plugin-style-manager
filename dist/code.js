@@ -80,6 +80,13 @@
       layoutGrow: "layoutGrow" in node ? node.layoutGrow : 0,
       layoutPositioning: "layoutPositioning" in node ? node.layoutPositioning : "AUTO"
     };
+    if (node.type === "INSTANCE") {
+      const inst = node;
+      if (inst.mainComponent) {
+        base.mainComponentKey = inst.mainComponent.key;
+        base.mainComponentId = inst.mainComponent.id;
+      }
+    }
     if ("boundVariables" in node && node.boundVariables) {
       const bv = node.boundVariables;
       if (Object.keys(bv).length > 0) {
@@ -95,6 +102,22 @@
       if ("strokeRightWeight" in node) base.strokeRightWeight = node.strokeRightWeight;
       if ("strokeBottomWeight" in node) base.strokeBottomWeight = node.strokeBottomWeight;
       if ("strokeLeftWeight" in node) base.strokeLeftWeight = node.strokeLeftWeight;
+      if ("dashPattern" in node) {
+        const dp = node.dashPattern;
+        base.dashPattern = typeof dp === "symbol" ? [] : [...dp];
+      }
+      if ("strokeCap" in node) {
+        const sc = node.strokeCap;
+        base.strokeCap = typeof sc === "symbol" ? "NONE" : sc;
+      }
+      if ("strokeJoin" in node) {
+        const sj = node.strokeJoin;
+        base.strokeJoin = typeof sj === "symbol" ? "MITER" : sj;
+      }
+      if ("strokeMiterLimit" in node) {
+        const sml = node.strokeMiterLimit;
+        base.strokeMiterLimit = typeof sml === "symbol" ? 4 : sml;
+      }
     }
     if ("fillStyleId" in node && node.fillStyleId) base.fillStyleId = node.fillStyleId;
     if ("strokeStyleId" in node && node.strokeStyleId) base.strokeStyleId = node.strokeStyleId;
@@ -102,7 +125,7 @@
     if ("effects" in node) {
       base.effects = node.effects.map(serializeEffect).filter((e) => e !== null);
     }
-    if (node.type === "RECTANGLE" || node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE") {
+    if (node.type === "RECTANGLE" || node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE" || node.type === "COMPONENT_SET") {
       const r = node;
       base.cornerRadius = safeCornerRadius(r);
       base.topLeftRadius = r.topLeftRadius;
@@ -110,7 +133,7 @@
       base.bottomLeftRadius = r.bottomLeftRadius;
       base.bottomRightRadius = r.bottomRightRadius;
     }
-    if (node.type === "FRAME" || node.type === "COMPONENT") {
+    if (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE" || node.type === "COMPONENT_SET") {
       const f = node;
       base.layoutMode = f.layoutMode === "GRID" ? "NONE" : f.layoutMode;
       base.primaryAxisSizingMode = f.primaryAxisSizingMode;
@@ -156,9 +179,18 @@
     return base;
   }
   function applyBaseLayout(node, data) {
-    if (data.layoutAlign !== void 0) node.layoutAlign = data.layoutAlign;
-    if (data.layoutGrow !== void 0) node.layoutGrow = data.layoutGrow;
-    if (data.layoutPositioning !== void 0) node.layoutPositioning = data.layoutPositioning;
+    try {
+      if (data.layoutAlign !== void 0) node.layoutAlign = data.layoutAlign;
+    } catch (e) {
+    }
+    try {
+      if (data.layoutGrow !== void 0) node.layoutGrow = data.layoutGrow;
+    } catch (e) {
+    }
+    try {
+      if (data.layoutPositioning !== void 0) node.layoutPositioning = data.layoutPositioning;
+    } catch (e) {
+    }
   }
   function applyBoundVariables(node, boundVariables) {
     if (!boundVariables) return;
@@ -201,19 +233,27 @@
   }
   function applyFills(node, fills) {
     if (!fills) return;
-    node.fills = fills.map(applyPaint).filter((p) => p !== null);
-  }
-  function applyStrokes(node, strokes, weight, align, individualWeights) {
-    if (!strokes) return;
-    node.strokes = strokes.map(applyPaint).filter((p) => p !== null);
-    if (weight !== void 0) node.strokeWeight = weight;
-    if (individualWeights) {
-      if (individualWeights.top !== void 0 && "strokeTopWeight" in node) node.strokeTopWeight = individualWeights.top;
-      if (individualWeights.right !== void 0 && "strokeRightWeight" in node) node.strokeRightWeight = individualWeights.right;
-      if (individualWeights.bottom !== void 0 && "strokeBottomWeight" in node) node.strokeBottomWeight = individualWeights.bottom;
-      if (individualWeights.left !== void 0 && "strokeLeftWeight" in node) node.strokeLeftWeight = individualWeights.left;
+    try {
+      node.fills = fills.map(applyPaint).filter((p) => p !== null);
+    } catch (e) {
     }
-    if (align !== void 0) node.strokeAlign = align;
+  }
+  function applyStrokes(node, data) {
+    if (!data.strokes) return;
+    try {
+      node.strokes = data.strokes.map(applyPaint).filter((p) => p !== null);
+      if (data.strokeWeight !== void 0) node.strokeWeight = data.strokeWeight;
+      if (data.strokeTopWeight !== void 0 && "strokeTopWeight" in node) node.strokeTopWeight = data.strokeTopWeight;
+      if (data.strokeRightWeight !== void 0 && "strokeRightWeight" in node) node.strokeRightWeight = data.strokeRightWeight;
+      if (data.strokeBottomWeight !== void 0 && "strokeBottomWeight" in node) node.strokeBottomWeight = data.strokeBottomWeight;
+      if (data.strokeLeftWeight !== void 0 && "strokeLeftWeight" in node) node.strokeLeftWeight = data.strokeLeftWeight;
+      if (data.strokeAlign !== void 0) node.strokeAlign = data.strokeAlign;
+      if (data.dashPattern !== void 0 && "dashPattern" in node) node.dashPattern = data.dashPattern;
+      if (data.strokeCap !== void 0 && "strokeCap" in node) node.strokeCap = data.strokeCap;
+      if (data.strokeJoin !== void 0 && "strokeJoin" in node) node.strokeJoin = data.strokeJoin;
+      if (data.strokeMiterLimit !== void 0 && "strokeMiterLimit" in node) node.strokeMiterLimit = data.strokeMiterLimit;
+    } catch (e) {
+    }
   }
   function applyEffects(node, effects) {
     if (!effects) return;
@@ -257,31 +297,73 @@
   }
   function applyCorners(node, data) {
     const cr = data.cornerRadius;
-    if (cr !== void 0 && cr >= 0 && cr === data.topLeftRadius) {
-      node.cornerRadius = cr;
-    } else {
-      if (data.topLeftRadius !== void 0) node.topLeftRadius = data.topLeftRadius;
-      if (data.topRightRadius !== void 0) node.topRightRadius = data.topRightRadius;
-      if (data.bottomLeftRadius !== void 0) node.bottomLeftRadius = data.bottomLeftRadius;
-      if (data.bottomRightRadius !== void 0) node.bottomRightRadius = data.bottomRightRadius;
+    try {
+      if (cr !== void 0 && cr >= 0 && cr === data.topLeftRadius) {
+        node.cornerRadius = cr;
+      } else {
+        if (data.topLeftRadius !== void 0) node.topLeftRadius = data.topLeftRadius;
+        if (data.topRightRadius !== void 0) node.topRightRadius = data.topRightRadius;
+        if (data.bottomLeftRadius !== void 0) node.bottomLeftRadius = data.bottomLeftRadius;
+        if (data.bottomRightRadius !== void 0) node.bottomRightRadius = data.bottomRightRadius;
+      }
+    } catch (e) {
     }
   }
   function applyFrameLayout(frame, data) {
-    if (data.layoutMode !== void 0) frame.layoutMode = data.layoutMode;
-    if (data.layoutMode && data.layoutMode !== "NONE") {
-      if (data.primaryAxisSizingMode) frame.primaryAxisSizingMode = data.primaryAxisSizingMode;
-      if (data.counterAxisSizingMode) frame.counterAxisSizingMode = data.counterAxisSizingMode;
-      if (data.primaryAxisAlignItems) frame.primaryAxisAlignItems = data.primaryAxisAlignItems;
-      if (data.counterAxisAlignItems) frame.counterAxisAlignItems = data.counterAxisAlignItems;
-      if (data.itemSpacing !== void 0) frame.itemSpacing = data.itemSpacing;
-      if (data.itemReverseZIndex !== void 0) frame.itemReverseZIndex = data.itemReverseZIndex;
-      if (data.strokesIncludedInLayout !== void 0) frame.strokesIncludedInLayout = data.strokesIncludedInLayout;
-      if (data.paddingTop !== void 0) frame.paddingTop = data.paddingTop;
-      if (data.paddingBottom !== void 0) frame.paddingBottom = data.paddingBottom;
-      if (data.paddingLeft !== void 0) frame.paddingLeft = data.paddingLeft;
-      if (data.paddingRight !== void 0) frame.paddingRight = data.paddingRight;
+    try {
+      if (data.layoutMode !== void 0) frame.layoutMode = data.layoutMode;
+    } catch (e) {
     }
-    if (data.clipsContent !== void 0) frame.clipsContent = data.clipsContent;
+    if (data.layoutMode && data.layoutMode !== "NONE") {
+      try {
+        if (data.primaryAxisSizingMode) frame.primaryAxisSizingMode = data.primaryAxisSizingMode;
+      } catch (e) {
+      }
+      try {
+        if (data.counterAxisSizingMode) frame.counterAxisSizingMode = data.counterAxisSizingMode;
+      } catch (e) {
+      }
+      try {
+        if (data.primaryAxisAlignItems) frame.primaryAxisAlignItems = data.primaryAxisAlignItems;
+      } catch (e) {
+      }
+      try {
+        if (data.counterAxisAlignItems) frame.counterAxisAlignItems = data.counterAxisAlignItems;
+      } catch (e) {
+      }
+      try {
+        if (data.itemSpacing !== void 0) frame.itemSpacing = data.itemSpacing;
+      } catch (e) {
+      }
+      try {
+        if (data.itemReverseZIndex !== void 0) frame.itemReverseZIndex = data.itemReverseZIndex;
+      } catch (e) {
+      }
+      try {
+        if (data.strokesIncludedInLayout !== void 0) frame.strokesIncludedInLayout = data.strokesIncludedInLayout;
+      } catch (e) {
+      }
+      try {
+        if (data.paddingTop !== void 0) frame.paddingTop = data.paddingTop;
+      } catch (e) {
+      }
+      try {
+        if (data.paddingBottom !== void 0) frame.paddingBottom = data.paddingBottom;
+      } catch (e) {
+      }
+      try {
+        if (data.paddingLeft !== void 0) frame.paddingLeft = data.paddingLeft;
+      } catch (e) {
+      }
+      try {
+        if (data.paddingRight !== void 0) frame.paddingRight = data.paddingRight;
+      } catch (e) {
+      }
+    }
+    try {
+      if (data.clipsContent !== void 0) frame.clipsContent = data.clipsContent;
+    } catch (e) {
+    }
   }
   async function collectFonts(node, set) {
     if (node.type === "TEXT") {
@@ -304,8 +386,35 @@
   }
   async function restoreNode(data, parent) {
     let node = null;
-    if (data.type === "FRAME" || data.type === "COMPONENT") {
-      const frame = figma.createFrame();
+    if (data.type === "FRAME" || data.type === "COMPONENT" || data.type === "INSTANCE" || data.type === "COMPONENT_SET") {
+      let frame;
+      if (data.type === "COMPONENT") {
+        frame = figma.createComponent();
+      } else if (data.type === "INSTANCE") {
+        let comp = null;
+        if (data.mainComponentKey) {
+          try {
+            comp = await figma.importComponentByKeyAsync(data.mainComponentKey);
+          } catch (e) {
+          }
+        }
+        if (!comp && data.mainComponentId) {
+          try {
+            const found = figma.getNodeById(data.mainComponentId);
+            if (found && found.type === "COMPONENT") comp = found;
+          } catch (e) {
+          }
+        }
+        if (comp) {
+          frame = comp.createInstance();
+        } else {
+          frame = figma.createFrame();
+        }
+      } else if (data.type === "COMPONENT_SET") {
+        frame = figma.createFrame();
+      } else {
+        frame = figma.createFrame();
+      }
       frame.name = data.name;
       frame.resize(data.width, data.height);
       frame.x = data.x;
@@ -315,12 +424,7 @@
       frame.blendMode = data.blendMode;
       frame.visible = data.visible;
       applyFills(frame, data.fills);
-      applyStrokes(frame, data.strokes, data.strokeWeight, data.strokeAlign, {
-        top: data.strokeTopWeight,
-        right: data.strokeRightWeight,
-        bottom: data.strokeBottomWeight,
-        left: data.strokeLeftWeight
-      });
+      applyStrokes(frame, data);
       applyEffects(frame, data.effects);
       if (data.fillStyleId) try {
         frame.fillStyleId = data.fillStyleId;
@@ -340,8 +444,18 @@
       applyBoundVariables(frame, data.boundVariables);
       parent.appendChild(frame);
       if (data.children) {
-        for (const childData of data.children) {
-          await restoreNode(childData, frame);
+        if (frame.type === "INSTANCE") {
+          const inst = frame;
+          for (const childData of data.children) {
+            const found = inst.children.find((c) => c.name === childData.name);
+            if (found) {
+              await applyOverrides(found, childData);
+            }
+          }
+        } else {
+          for (const childData of data.children) {
+            await restoreNode(childData, frame);
+          }
         }
       }
       node = frame;
@@ -375,12 +489,7 @@
       } else {
         tempFrame.name = data.name;
         applyFills(tempFrame, data.fills);
-        applyStrokes(tempFrame, data.strokes, data.strokeWeight, data.strokeAlign, {
-          top: data.strokeTopWeight,
-          right: data.strokeRightWeight,
-          bottom: data.strokeBottomWeight,
-          left: data.strokeLeftWeight
-        });
+        applyStrokes(tempFrame, data);
         applyEffects(tempFrame, data.effects);
         if (data.fillStyleId) try {
           tempFrame.fillStyleId = data.fillStyleId;
@@ -407,12 +516,7 @@
       rect.blendMode = data.blendMode;
       rect.visible = data.visible;
       applyFills(rect, data.fills);
-      applyStrokes(rect, data.strokes, data.strokeWeight, data.strokeAlign, {
-        top: data.strokeTopWeight,
-        right: data.strokeRightWeight,
-        bottom: data.strokeBottomWeight,
-        left: data.strokeLeftWeight
-      });
+      applyStrokes(rect, data);
       applyEffects(rect, data.effects);
       if (data.fillStyleId) try {
         rect.fillStyleId = data.fillStyleId;
@@ -442,7 +546,7 @@
       el.blendMode = data.blendMode;
       el.visible = data.visible;
       applyFills(el, data.fills);
-      applyStrokes(el, data.strokes, data.strokeWeight, data.strokeAlign);
+      applyStrokes(el, data);
       applyEffects(el, data.effects);
       if (data.fillStyleId) try {
         el.fillStyleId = data.fillStyleId;
@@ -470,7 +574,7 @@
       line.opacity = data.opacity;
       line.blendMode = data.blendMode;
       line.visible = data.visible;
-      applyStrokes(line, data.strokes, data.strokeWeight, data.strokeAlign);
+      applyStrokes(line, data);
       applyEffects(line, data.effects);
       if (data.strokeStyleId) try {
         line.strokeStyleId = data.strokeStyleId;
@@ -548,6 +652,62 @@
     }
     return node;
   }
+  async function applyOverrides(node, data) {
+    if (node.type === "INSTANCE" && data.type === "INSTANCE" && data.mainComponentKey) {
+      const inst = node;
+      if (!inst.mainComponent || inst.mainComponent.key !== data.mainComponentKey) {
+        try {
+          const newComp = await figma.importComponentByKeyAsync(data.mainComponentKey);
+          inst.swapComponent(newComp);
+        } catch (e) {
+          console.warn("[class-manager] could not swap nested instance component:", e);
+        }
+      }
+    }
+    if ("fills" in node) applyFills(node, data.fills);
+    if ("strokes" in node) applyStrokes(node, data);
+    if ("effects" in node) applyEffects(node, data.effects);
+    if ("fillStyleId" in node && data.fillStyleId) try {
+      node.fillStyleId = data.fillStyleId;
+    } catch (e) {
+    }
+    if ("strokeStyleId" in node && data.strokeStyleId) try {
+      node.strokeStyleId = data.strokeStyleId;
+    } catch (e) {
+    }
+    if ("effectStyleId" in node && data.effectStyleId) try {
+      node.effectStyleId = data.effectStyleId;
+    } catch (e) {
+    }
+    if ("opacity" in node && data.opacity !== void 0) node.opacity = data.opacity;
+    if ("visible" in node && data.visible !== void 0) node.visible = data.visible;
+    if ("blendMode" in node && data.blendMode !== void 0) node.blendMode = data.blendMode;
+    if (node.type === "RECTANGLE" || node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE") {
+      applyCorners(node, data);
+    }
+    if (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE") {
+      applyFrameLayout(node, data);
+      applyBaseLayout(node, data);
+    }
+    if (node.type === "TEXT" && data.type === "TEXT") {
+      const t = node;
+      if (data.characters !== void 0) t.characters = data.characters;
+      if (data.fontSize !== void 0) t.fontSize = data.fontSize;
+      if (data.fontName) {
+        await figma.loadFontAsync(data.fontName);
+        t.fontName = data.fontName;
+      }
+    }
+    if (data.children && "children" in node) {
+      const children = node.children;
+      for (const childData of data.children) {
+        const found = children.find((c) => c.name === childData.name);
+        if (found) {
+          await applyOverrides(found, childData);
+        }
+      }
+    }
+  }
   var GLOBAL_STORAGE_KEY = "global-classes";
   async function loadPersonalClasses() {
     const raw = await figma.clientStorage.getAsync(LOCAL_STORAGE_KEY);
@@ -593,7 +753,7 @@
   function getValidNode(sel) {
     const node = sel[0];
     if (!node) return null;
-    if (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE") {
+    if (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE" || node.type === "COMPONENT_SET") {
       return node;
     }
     return null;

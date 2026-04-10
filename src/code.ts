@@ -61,6 +61,10 @@ interface SerializedNode {
   strokeBottomWeight?: number;
   strokeLeftWeight?: number;
   strokeAlign?: string;
+  dashPattern?: number[];
+  strokeCap?: string;
+  strokeJoin?: string;
+  strokeMiterLimit?: number;
   effects?: ShadowDef[];
   effectStyleId?: string;
   // Shared corners
@@ -99,6 +103,9 @@ interface SerializedNode {
   textDecoration?: string;
   // Children (FRAME, GROUP, COMPONENT)
   children?: SerializedNode[];
+  // Component/Instance
+  mainComponentKey?: string;
+  mainComponentId?: string;
 }
 
 interface ClassDefinition {
@@ -216,6 +223,14 @@ function serializeNode(node: SceneNode): SerializedNode {
     layoutPositioning: ("layoutPositioning" in node) ? (node as any).layoutPositioning : "AUTO",
   };
 
+  if (node.type === "INSTANCE") {
+    const inst = node as InstanceNode;
+    if (inst.mainComponent) {
+      base.mainComponentKey = inst.mainComponent.key;
+      base.mainComponentId = inst.mainComponent.id;
+    }
+  }
+
   // Capture bound variables if they exist
   if ("boundVariables" in node && node.boundVariables) {
     const bv = node.boundVariables;
@@ -235,6 +250,23 @@ function serializeNode(node: SceneNode): SerializedNode {
     if ("strokeRightWeight" in node) base.strokeRightWeight = (node as any).strokeRightWeight as number;
     if ("strokeBottomWeight" in node) base.strokeBottomWeight = (node as any).strokeBottomWeight as number;
     if ("strokeLeftWeight" in node) base.strokeLeftWeight = (node as any).strokeLeftWeight as number;
+
+    if ("dashPattern" in node) {
+      const dp = (node as any).dashPattern;
+      base.dashPattern = typeof dp === "symbol" ? [] : [...dp];
+    }
+    if ("strokeCap" in node) {
+      const sc = (node as any).strokeCap;
+      base.strokeCap = typeof sc === "symbol" ? "NONE" : sc;
+    }
+    if ("strokeJoin" in node) {
+      const sj = (node as any).strokeJoin;
+      base.strokeJoin = typeof sj === "symbol" ? "MITER" : sj;
+    }
+    if ("strokeMiterLimit" in node) {
+      const sml = (node as any).strokeMiterLimit;
+      base.strokeMiterLimit = typeof sml === "symbol" ? 4 : sml;
+    }
   }
 
   if ("fillStyleId" in node && node.fillStyleId) base.fillStyleId = node.fillStyleId as string;
@@ -246,7 +278,7 @@ function serializeNode(node: SceneNode): SerializedNode {
   }
 
   // Rectangle-specific corners
-  if (node.type === "RECTANGLE" || node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE") {
+  if (node.type === "RECTANGLE" || node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE" || node.type === "COMPONENT_SET") {
     const r = node as any;
     base.cornerRadius = safeCornerRadius(r);
     base.topLeftRadius = r.topLeftRadius;
@@ -255,9 +287,9 @@ function serializeNode(node: SceneNode): SerializedNode {
     base.bottomRightRadius = r.bottomRightRadius;
   }
 
-  // Frame / component layout
-  if (node.type === "FRAME" || node.type === "COMPONENT") {
-    const f = node as FrameNode | ComponentNode;
+  // Frame / component / instance / component set layout
+  if (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE" || node.type === "COMPONENT_SET") {
+    const f = node as FrameNode | ComponentNode | InstanceNode | ComponentSetNode;
     base.layoutMode = (f.layoutMode === "GRID" ? "NONE" : f.layoutMode) as any;
     base.primaryAxisSizingMode = f.primaryAxisSizingMode;
     base.counterAxisSizingMode = f.counterAxisSizingMode;
@@ -315,9 +347,9 @@ function serializeNode(node: SceneNode): SerializedNode {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function applyBaseLayout(node: any, data: SerializedNode) {
-  if (data.layoutAlign !== undefined) node.layoutAlign = data.layoutAlign;
-  if (data.layoutGrow !== undefined) node.layoutGrow = data.layoutGrow;
-  if (data.layoutPositioning !== undefined) node.layoutPositioning = data.layoutPositioning;
+  try { if (data.layoutAlign !== undefined) node.layoutAlign = data.layoutAlign; } catch (e) { }
+  try { if (data.layoutGrow !== undefined) node.layoutGrow = data.layoutGrow; } catch (e) { }
+  try { if (data.layoutPositioning !== undefined) node.layoutPositioning = data.layoutPositioning; } catch (e) { }
 }
 
 function applyBoundVariables(node: SceneNode, boundVariables: SerializedNode["boundVariables"]) {
@@ -365,23 +397,30 @@ function applyPaint(def: PaintDef): Paint | null {
 
 function applyFills(node: any, fills: PaintDef[] | undefined) {
   if (!fills) return;
-  node.fills = fills.map(applyPaint).filter((p): p is Paint => p !== null);
+  try {
+    node.fills = fills.map(applyPaint).filter((p): p is Paint => p !== null);
+  } catch (e) { }
 }
 
-function applyStrokes(node: any, strokes: PaintDef[] | undefined, weight: number | undefined, align: string | undefined, individualWeights?: { top?: number; right?: number; bottom?: number; left?: number }) {
-  if (!strokes) return;
-  node.strokes = strokes.map(applyPaint).filter((p): p is Paint => p !== null);
+function applyStrokes(node: any, data: SerializedNode) {
+  if (!data.strokes) return;
+  try {
+    node.strokes = data.strokes.map(applyPaint).filter((p): p is Paint => p !== null);
 
-  if (weight !== undefined) node.strokeWeight = weight;
+    if (data.strokeWeight !== undefined) node.strokeWeight = data.strokeWeight;
 
-  if (individualWeights) {
-    if (individualWeights.top !== undefined && "strokeTopWeight" in node) node.strokeTopWeight = individualWeights.top;
-    if (individualWeights.right !== undefined && "strokeRightWeight" in node) node.strokeRightWeight = individualWeights.right;
-    if (individualWeights.bottom !== undefined && "strokeBottomWeight" in node) node.strokeBottomWeight = individualWeights.bottom;
-    if (individualWeights.left !== undefined && "strokeLeftWeight" in node) node.strokeLeftWeight = individualWeights.left;
-  }
+    if (data.strokeTopWeight !== undefined && "strokeTopWeight" in node) node.strokeTopWeight = data.strokeTopWeight;
+    if (data.strokeRightWeight !== undefined && "strokeRightWeight" in node) node.strokeRightWeight = data.strokeRightWeight;
+    if (data.strokeBottomWeight !== undefined && "strokeBottomWeight" in node) node.strokeBottomWeight = data.strokeBottomWeight;
+    if (data.strokeLeftWeight !== undefined && "strokeLeftWeight" in node) node.strokeLeftWeight = data.strokeLeftWeight;
 
-  if (align !== undefined) node.strokeAlign = align as any;
+    if (data.strokeAlign !== undefined) node.strokeAlign = data.strokeAlign as any;
+
+    if (data.dashPattern !== undefined && "dashPattern" in node) node.dashPattern = data.dashPattern;
+    if (data.strokeCap !== undefined && "strokeCap" in node) node.strokeCap = data.strokeCap as any;
+    if (data.strokeJoin !== undefined && "strokeJoin" in node) node.strokeJoin = data.strokeJoin as any;
+    if (data.strokeMiterLimit !== undefined && "strokeMiterLimit" in node) node.strokeMiterLimit = data.strokeMiterLimit;
+  } catch (e) { }
 }
 
 function applyEffects(node: any, effects: ShadowDef[] | undefined) {
@@ -427,37 +466,39 @@ function applyEffects(node: any, effects: ShadowDef[] | undefined) {
 
 function applyCorners(node: any, data: SerializedNode) {
   const cr = data.cornerRadius;
-  if (cr !== undefined && cr >= 0 && cr === data.topLeftRadius) {
-    node.cornerRadius = cr;
-  } else {
-    if (data.topLeftRadius !== undefined) node.topLeftRadius = data.topLeftRadius;
-    if (data.topRightRadius !== undefined) node.topRightRadius = data.topRightRadius;
-    if (data.bottomLeftRadius !== undefined) node.bottomLeftRadius = data.bottomLeftRadius;
-    if (data.bottomRightRadius !== undefined) node.bottomRightRadius = data.bottomRightRadius;
-  }
+  try {
+    if (cr !== undefined && cr >= 0 && cr === data.topLeftRadius) {
+      node.cornerRadius = cr;
+    } else {
+      if (data.topLeftRadius !== undefined) node.topLeftRadius = data.topLeftRadius;
+      if (data.topRightRadius !== undefined) node.topRightRadius = data.topRightRadius;
+      if (data.bottomLeftRadius !== undefined) node.bottomLeftRadius = data.bottomLeftRadius;
+      if (data.bottomRightRadius !== undefined) node.bottomRightRadius = data.bottomRightRadius;
+    }
+  } catch (e) { }
 }
 
-function applyFrameLayout(frame: FrameNode | ComponentNode, data: SerializedNode) {
-  if (data.layoutMode !== undefined) (frame as any).layoutMode = data.layoutMode;
+function applyFrameLayout(frame: FrameNode | ComponentNode | InstanceNode, data: SerializedNode) {
+  try { if (data.layoutMode !== undefined) (frame as any).layoutMode = data.layoutMode; } catch (e) { }
 
   // These properties only exist when Auto Layout is enabled (horizontal or vertical)
   if (data.layoutMode && data.layoutMode !== "NONE") {
-    if (data.primaryAxisSizingMode) frame.primaryAxisSizingMode = data.primaryAxisSizingMode;
-    if (data.counterAxisSizingMode) frame.counterAxisSizingMode = data.counterAxisSizingMode;
-    if (data.primaryAxisAlignItems) frame.primaryAxisAlignItems = data.primaryAxisAlignItems;
-    if (data.counterAxisAlignItems) frame.counterAxisAlignItems = data.counterAxisAlignItems as any;
+    try { if (data.primaryAxisSizingMode) frame.primaryAxisSizingMode = data.primaryAxisSizingMode; } catch (e) { }
+    try { if (data.counterAxisSizingMode) frame.counterAxisSizingMode = data.counterAxisSizingMode; } catch (e) { }
+    try { if (data.primaryAxisAlignItems) frame.primaryAxisAlignItems = data.primaryAxisAlignItems; } catch (e) { }
+    try { if (data.counterAxisAlignItems) frame.counterAxisAlignItems = data.counterAxisAlignItems as any; } catch (e) { }
 
-    if (data.itemSpacing !== undefined) frame.itemSpacing = data.itemSpacing;
-    if (data.itemReverseZIndex !== undefined) frame.itemReverseZIndex = data.itemReverseZIndex;
-    if (data.strokesIncludedInLayout !== undefined) frame.strokesIncludedInLayout = data.strokesIncludedInLayout;
+    try { if (data.itemSpacing !== undefined) frame.itemSpacing = data.itemSpacing; } catch (e) { }
+    try { if (data.itemReverseZIndex !== undefined) frame.itemReverseZIndex = data.itemReverseZIndex; } catch (e) { }
+    try { if (data.strokesIncludedInLayout !== undefined) frame.strokesIncludedInLayout = data.strokesIncludedInLayout; } catch (e) { }
 
-    if (data.paddingTop !== undefined) frame.paddingTop = data.paddingTop;
-    if (data.paddingBottom !== undefined) frame.paddingBottom = data.paddingBottom;
-    if (data.paddingLeft !== undefined) frame.paddingLeft = data.paddingLeft;
-    if (data.paddingRight !== undefined) frame.paddingRight = data.paddingRight;
+    try { if (data.paddingTop !== undefined) frame.paddingTop = data.paddingTop; } catch (e) { }
+    try { if (data.paddingBottom !== undefined) frame.paddingBottom = data.paddingBottom; } catch (e) { }
+    try { if (data.paddingLeft !== undefined) frame.paddingLeft = data.paddingLeft; } catch (e) { }
+    try { if (data.paddingRight !== undefined) frame.paddingRight = data.paddingRight; } catch (e) { }
   }
 
-  if (data.clipsContent !== undefined) frame.clipsContent = data.clipsContent;
+  try { if (data.clipsContent !== undefined) frame.clipsContent = data.clipsContent; } catch (e) { }
 }
 
 /** Collect all unique fontNames in a tree so we can pre-load them. */
@@ -486,8 +527,33 @@ async function collectFonts(node: SerializedNode, set: Set<string>) {
 async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNode | GroupNode | PageNode): Promise<SceneNode | null> {
   let node: SceneNode | null = null;
 
-  if (data.type === "FRAME" || data.type === "COMPONENT") {
-    const frame = figma.createFrame();
+  if (data.type === "FRAME" || data.type === "COMPONENT" || data.type === "INSTANCE" || data.type === "COMPONENT_SET") {
+    let frame: FrameNode | ComponentNode | InstanceNode | ComponentSetNode;
+
+    if (data.type === "COMPONENT") {
+      frame = figma.createComponent();
+    } else if (data.type === "INSTANCE") {
+      let comp: ComponentNode | null = null;
+      if (data.mainComponentKey) {
+        try { comp = await figma.importComponentByKeyAsync(data.mainComponentKey); } catch (e) { }
+      }
+      if (!comp && data.mainComponentId) {
+        try {
+          const found = figma.getNodeById(data.mainComponentId);
+          if (found && found.type === "COMPONENT") comp = found;
+        } catch (e) { }
+      }
+
+      if (comp) {
+        frame = comp.createInstance();
+      } else {
+        frame = figma.createFrame();
+      }
+    } else if (data.type === "COMPONENT_SET") {
+      frame = figma.createFrame();
+    } else {
+      frame = figma.createFrame();
+    }
     frame.name = data.name;
     frame.resize(data.width, data.height);
     frame.x = data.x;
@@ -498,12 +564,7 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
     frame.visible = data.visible;
 
     applyFills(frame, data.fills);
-    applyStrokes(frame, data.strokes, data.strokeWeight, data.strokeAlign, {
-      top: data.strokeTopWeight,
-      right: data.strokeRightWeight,
-      bottom: data.strokeBottomWeight,
-      left: data.strokeLeftWeight,
-    });
+    applyStrokes(frame, data);
     applyEffects(frame, data.effects);
     if (data.fillStyleId) try { frame.fillStyleId = data.fillStyleId; } catch { }
     if (data.strokeStyleId) try { frame.strokeStyleId = data.strokeStyleId; } catch { }
@@ -517,8 +578,21 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
     parent.appendChild(frame);
 
     if (data.children) {
-      for (const childData of data.children) {
-        await restoreNode(childData, frame);
+      if (frame.type === "INSTANCE") {
+        // For instances, we don't create new children.
+        // We try to find existing children by name and apply overrides.
+        const inst = frame as InstanceNode;
+        for (const childData of data.children) {
+          const found = inst.children.find(c => c.name === childData.name);
+          if (found) {
+            await applyOverrides(found, childData);
+          }
+        }
+      } else {
+        // For frames/components/fallbacks, we create new children recursively.
+        for (const childData of data.children) {
+          await restoreNode(childData, frame as any);
+        }
       }
     }
 
@@ -554,12 +628,7 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
     } else {
       tempFrame.name = data.name;
       applyFills(tempFrame, data.fills);
-      applyStrokes(tempFrame, data.strokes, data.strokeWeight, data.strokeAlign, {
-        top: data.strokeTopWeight,
-        right: data.strokeRightWeight,
-        bottom: data.strokeBottomWeight,
-        left: data.strokeLeftWeight,
-      });
+      applyStrokes(tempFrame, data);
       applyEffects(tempFrame, data.effects);
       if (data.fillStyleId) try { tempFrame.fillStyleId = data.fillStyleId; } catch { }
       if (data.strokeStyleId) try { tempFrame.strokeStyleId = data.strokeStyleId; } catch { }
@@ -579,12 +648,7 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
     rect.blendMode = data.blendMode as BlendMode;
     rect.visible = data.visible;
     applyFills(rect, data.fills);
-    applyStrokes(rect, data.strokes, data.strokeWeight, data.strokeAlign, {
-      top: data.strokeTopWeight,
-      right: data.strokeRightWeight,
-      bottom: data.strokeBottomWeight,
-      left: data.strokeLeftWeight,
-    });
+    applyStrokes(rect, data);
     applyEffects(rect, data.effects);
     if (data.fillStyleId) try { rect.fillStyleId = data.fillStyleId; } catch { }
     if (data.strokeStyleId) try { rect.strokeStyleId = data.strokeStyleId; } catch { }
@@ -608,7 +672,7 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
     el.blendMode = data.blendMode as BlendMode;
     el.visible = data.visible;
     applyFills(el, data.fills);
-    applyStrokes(el, data.strokes, data.strokeWeight, data.strokeAlign);
+    applyStrokes(el, data);
     applyEffects(el, data.effects);
     if (data.fillStyleId) try { el.fillStyleId = data.fillStyleId; } catch { }
     if (data.strokeStyleId) try { el.strokeStyleId = data.strokeStyleId; } catch { }
@@ -630,7 +694,7 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
     line.opacity = data.opacity;
     line.blendMode = data.blendMode as BlendMode;
     line.visible = data.visible;
-    applyStrokes(line, data.strokes, data.strokeWeight, data.strokeAlign);
+    applyStrokes(line, data);
     applyEffects(line, data.effects);
     if (data.strokeStyleId) try { line.strokeStyleId = data.strokeStyleId; } catch { }
     if (data.effectStyleId) try { line.effectStyleId = data.effectStyleId; } catch { }
@@ -698,6 +762,71 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
   return node;
 }
 
+/** 
+ * Apply visual properties to an existing node (e.g. overrides on an instance child).
+ * This skip creation but applies fills, strokes, effects, etc.
+ */
+async function applyOverrides(node: SceneNode, data: SerializedNode) {
+  // Handle Instance Swap if necessary
+  if (node.type === "INSTANCE" && data.type === "INSTANCE" && data.mainComponentKey) {
+    const inst = node as InstanceNode;
+    if (!inst.mainComponent || inst.mainComponent.key !== data.mainComponentKey) {
+      try {
+        const newComp = await figma.importComponentByKeyAsync(data.mainComponentKey);
+        inst.swapComponent(newComp);
+      } catch (e) {
+        console.warn("[class-manager] could not swap nested instance component:", e);
+      }
+    }
+  }
+
+  // Apply visual properties
+  if ("fills" in node) applyFills(node as any, data.fills);
+  if ("strokes" in node) applyStrokes(node as any, data);
+  if ("effects" in node) applyEffects(node as any, data.effects);
+
+  if ("fillStyleId" in node && data.fillStyleId) try { (node as any).fillStyleId = data.fillStyleId; } catch { }
+  if ("strokeStyleId" in node && data.strokeStyleId) try { (node as any).strokeStyleId = data.strokeStyleId; } catch { }
+  if ("effectStyleId" in node && data.effectStyleId) try { (node as any).effectStyleId = data.effectStyleId; } catch { }
+
+  if ("opacity" in node && data.opacity !== undefined) (node as any).opacity = data.opacity;
+  if ("visible" in node && data.visible !== undefined) node.visible = data.visible;
+  if ("blendMode" in node && data.blendMode !== undefined) (node as any).blendMode = data.blendMode;
+
+  // Corners
+  if (node.type === "RECTANGLE" || node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE") {
+    applyCorners(node as any, data);
+  }
+
+  // Layout
+  if (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE") {
+    applyFrameLayout(node as any, data);
+    applyBaseLayout(node as any, data);
+  }
+
+  // Text
+  if (node.type === "TEXT" && data.type === "TEXT") {
+    const t = node as TextNode;
+    if (data.characters !== undefined) t.characters = data.characters;
+    if (data.fontSize !== undefined) t.fontSize = data.fontSize;
+    if (data.fontName) {
+      await figma.loadFontAsync(data.fontName);
+      t.fontName = data.fontName;
+    }
+  }
+
+  // Recursively apply to children (for nested overrides)
+  if (data.children && "children" in node) {
+    const children = (node as any).children as SceneNode[];
+    for (const childData of data.children) {
+      const found = children.find(c => c.name === childData.name);
+      if (found) {
+        await applyOverrides(found, childData);
+      }
+    }
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Storage  —  two scopes
 //   • personal  → figma.clientStorage  (device-local, private to this user)
@@ -757,7 +886,7 @@ let pinnedNode: any = null;
 function getValidNode(sel: readonly SceneNode[]): any {
   const node = sel[0];
   if (!node) return null;
-  if (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE") {
+  if (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE" || node.type === "COMPONENT_SET") {
     return node;
   }
   return null;
