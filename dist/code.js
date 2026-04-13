@@ -78,7 +78,8 @@
       visible: node.visible,
       layoutAlign: "layoutAlign" in node ? node.layoutAlign : "INHERIT",
       layoutGrow: "layoutGrow" in node ? node.layoutGrow : 0,
-      layoutPositioning: "layoutPositioning" in node ? node.layoutPositioning : "AUTO"
+      layoutPositioning: "layoutPositioning" in node ? node.layoutPositioning : "AUTO",
+      constraints: "constraints" in node ? node.constraints : void 0
     };
     if (node.type === "INSTANCE") {
       const inst = node;
@@ -189,6 +190,10 @@
     }
     try {
       if (data.layoutPositioning !== void 0) node.layoutPositioning = data.layoutPositioning;
+    } catch (e) {
+    }
+    try {
+      if (data.constraints !== void 0) node.constraints = data.constraints;
     } catch (e) {
     }
   }
@@ -440,9 +445,9 @@
       }
       applyCorners(frame, data);
       applyFrameLayout(frame, data);
+      parent.appendChild(frame);
       applyBaseLayout(frame, data);
       applyBoundVariables(frame, data.boundVariables);
-      parent.appendChild(frame);
       if (data.children) {
         if (frame.type === "INSTANCE") {
           const inst = frame;
@@ -531,9 +536,9 @@
       } catch (e) {
       }
       applyCorners(rect, data);
+      parent.appendChild(rect);
       applyBaseLayout(rect, data);
       applyBoundVariables(rect, data.boundVariables);
-      parent.appendChild(rect);
       node = rect;
     } else if (data.type === "ELLIPSE") {
       const el = figma.createEllipse();
@@ -560,9 +565,9 @@
         el.effectStyleId = data.effectStyleId;
       } catch (e) {
       }
+      parent.appendChild(el);
       applyBaseLayout(el, data);
       applyBoundVariables(el, data.boundVariables);
-      parent.appendChild(el);
       node = el;
     } else if (data.type === "LINE") {
       const line = figma.createLine();
@@ -584,9 +589,9 @@
         line.effectStyleId = data.effectStyleId;
       } catch (e) {
       }
+      parent.appendChild(line);
       applyBaseLayout(line, data);
       applyBoundVariables(line, data.boundVariables);
-      parent.appendChild(line);
       node = line;
     } else if (data.type === "TEXT") {
       const text = figma.createText();
@@ -625,9 +630,9 @@
         text.effectStyleId = data.effectStyleId;
       } catch (e) {
       }
+      parent.appendChild(text);
       applyBaseLayout(text, data);
       applyBoundVariables(text, data.boundVariables);
-      parent.appendChild(text);
       node = text;
     } else {
       const placeholder = figma.createRectangle();
@@ -753,7 +758,7 @@
   function getValidNode(sel) {
     const node = sel[0];
     if (!node) return null;
-    if (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE" || node.type === "COMPONENT_SET") {
+    if (node.type !== "SLICE") {
       return node;
     }
     return null;

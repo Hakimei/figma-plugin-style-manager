@@ -103,6 +103,11 @@ interface SerializedNode {
   textDecoration?: string;
   // Children (FRAME, GROUP, COMPONENT)
   children?: SerializedNode[];
+  // Constraints
+  constraints?: {
+    horizontal: "MIN" | "CENTER" | "MAX" | "STRETCH" | "SCALE";
+    vertical: "MIN" | "CENTER" | "MAX" | "STRETCH" | "SCALE";
+  };
   // Component/Instance
   mainComponentKey?: string;
   mainComponentId?: string;
@@ -221,6 +226,7 @@ function serializeNode(node: SceneNode): SerializedNode {
     layoutAlign: ("layoutAlign" in node) ? (node as any).layoutAlign : "INHERIT",
     layoutGrow: ("layoutGrow" in node) ? (node as any).layoutGrow : 0,
     layoutPositioning: ("layoutPositioning" in node) ? (node as any).layoutPositioning : "AUTO",
+    constraints: ("constraints" in node) ? (node as any).constraints : undefined,
   };
 
   if (node.type === "INSTANCE") {
@@ -350,6 +356,7 @@ function applyBaseLayout(node: any, data: SerializedNode) {
   try { if (data.layoutAlign !== undefined) node.layoutAlign = data.layoutAlign; } catch (e) { }
   try { if (data.layoutGrow !== undefined) node.layoutGrow = data.layoutGrow; } catch (e) { }
   try { if (data.layoutPositioning !== undefined) node.layoutPositioning = data.layoutPositioning; } catch (e) { }
+  try { if (data.constraints !== undefined) node.constraints = data.constraints; } catch (e) { }
 }
 
 function applyBoundVariables(node: SceneNode, boundVariables: SerializedNode["boundVariables"]) {
@@ -572,10 +579,10 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
 
     applyCorners(frame, data);
     applyFrameLayout(frame, data);
+    parent.appendChild(frame);
     applyBaseLayout(frame, data);
     applyBoundVariables(frame, data.boundVariables);
 
-    parent.appendChild(frame);
 
     if (data.children) {
       if (frame.type === "INSTANCE") {
@@ -655,9 +662,10 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
     if (data.effectStyleId) try { rect.effectStyleId = data.effectStyleId; } catch { }
 
     applyCorners(rect, data);
+    parent.appendChild(rect);
     applyBaseLayout(rect, data);
     applyBoundVariables(rect, data.boundVariables);
-    parent.appendChild(rect);
+
     node = rect;
   }
 
@@ -678,9 +686,10 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
     if (data.strokeStyleId) try { el.strokeStyleId = data.strokeStyleId; } catch { }
     if (data.effectStyleId) try { el.effectStyleId = data.effectStyleId; } catch { }
 
+    parent.appendChild(el);
     applyBaseLayout(el, data);
     applyBoundVariables(el, data.boundVariables);
-    parent.appendChild(el);
+
     node = el;
   }
 
@@ -699,9 +708,10 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
     if (data.strokeStyleId) try { line.strokeStyleId = data.strokeStyleId; } catch { }
     if (data.effectStyleId) try { line.effectStyleId = data.effectStyleId; } catch { }
 
+    parent.appendChild(line);
     applyBaseLayout(line, data);
     applyBoundVariables(line, data.boundVariables);
-    parent.appendChild(line);
+
     node = line;
   }
 
@@ -737,9 +747,10 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
     if (data.fillStyleId) try { text.fillStyleId = data.fillStyleId; } catch { }
     if (data.effectStyleId) try { text.effectStyleId = data.effectStyleId; } catch { }
 
+    parent.appendChild(text);
     applyBaseLayout(text, data);
     applyBoundVariables(text, data.boundVariables);
-    parent.appendChild(text);
+
     node = text;
   }
 
@@ -886,7 +897,9 @@ let pinnedNode: any = null;
 function getValidNode(sel: readonly SceneNode[]): any {
   const node = sel[0];
   if (!node) return null;
-  if (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE" || node.type === "COMPONENT_SET") {
+  // SceneNode already excludes PAGE and DOCUMENT. 
+  // We just filter out SLICE as it's not a typical "styleable" node.
+  if (node.type !== "SLICE") {
     return node;
   }
   return null;
