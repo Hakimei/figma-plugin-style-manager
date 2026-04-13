@@ -1609,8 +1609,12 @@
                 nameMatches.find(c => c.label && nodeName.includes(c.label)) ||
                 nameMatches[0];
             } else {
-              // 2. Try parsing "Label / Name" pattern if no direct name match
-              if (nodeName.includes("/")) {
+              // 2. Try parsing "Label Name" pattern
+              const patternMatch = classes.find(c => c.label && `${c.label} ${c.name}` === nodeName);
+              if (patternMatch) {
+                match = patternMatch;
+              } else if (nodeName.includes("/")) {
+                // 3. Fallback to old "Label / Name" pattern
                 const parts = nodeName.split("/").map(s => s.trim());
                 if (parts.length >= 2) {
                   const potentialName = parts[parts.length - 1];

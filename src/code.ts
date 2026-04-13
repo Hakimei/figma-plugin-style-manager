@@ -978,9 +978,9 @@ async function handleInsertClass(id: string, scope: string, dropEvent?: any) {
     const created = await restoreNode(tree, parentNode as any);
     if (created) {
       // Set the name of the root node to match the class metadata
-      // This ensures future identification via the "Label / Name" pattern
+      // This ensures future identification via the "Label Name (Label Name)" pattern
       if (cls.label) {
-        created.name = `${cls.label} / ${cls.name}`;
+        created.name = `${cls.label} ${cls.name}`;
       } else {
         created.name = cls.name;
       }

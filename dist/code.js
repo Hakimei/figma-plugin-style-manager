@@ -833,7 +833,7 @@
       const created = await restoreNode(tree, parentNode);
       if (created) {
         if (cls.label) {
-          created.name = `${cls.label} / ${cls.name}`;
+          created.name = `${cls.label} ${cls.name}`;
         } else {
           created.name = cls.name;
         }
