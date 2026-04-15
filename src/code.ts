@@ -111,6 +111,11 @@ interface SerializedNode {
   // Component/Instance
   mainComponentKey?: string;
   mainComponentId?: string;
+  // Min/Max dimensions
+  minWidth?: number | null;
+  maxWidth?: number | null;
+  minHeight?: number | null;
+  maxHeight?: number | null;
 }
 
 interface ClassDefinition {
@@ -227,6 +232,10 @@ function serializeNode(node: SceneNode): SerializedNode {
     layoutGrow: ("layoutGrow" in node) ? (node as any).layoutGrow : 0,
     layoutPositioning: ("layoutPositioning" in node) ? (node as any).layoutPositioning : "AUTO",
     constraints: ("constraints" in node) ? (node as any).constraints : undefined,
+    minWidth: ("minWidth" in node) ? (node as any).minWidth : undefined,
+    maxWidth: ("maxWidth" in node) ? (node as any).maxWidth : undefined,
+    minHeight: ("minHeight" in node) ? (node as any).minHeight : undefined,
+    maxHeight: ("maxHeight" in node) ? (node as any).maxHeight : undefined,
   };
 
   if (node.type === "INSTANCE") {
@@ -353,10 +362,38 @@ function serializeNode(node: SceneNode): SerializedNode {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function applyBaseLayout(node: any, data: SerializedNode) {
-  try { if (data.layoutAlign !== undefined) node.layoutAlign = data.layoutAlign; } catch (e) { }
-  try { if (data.layoutGrow !== undefined) node.layoutGrow = data.layoutGrow; } catch (e) { }
-  try { if (data.layoutPositioning !== undefined) node.layoutPositioning = data.layoutPositioning; } catch (e) { }
-  try { if (data.constraints !== undefined) node.constraints = data.constraints; } catch (e) { }
+  try {
+    // 1. Set Positioning Mode first (Absolute vs Auto)
+    // This defines how x, y, layoutAlign etc. are interpreted
+    if (data.layoutPositioning !== undefined) node.layoutPositioning = data.layoutPositioning;
+
+    // 2. Set Alignment and Grow
+    if (data.layoutAlign !== undefined) node.layoutAlign = data.layoutAlign;
+    if (data.layoutGrow !== undefined) node.layoutGrow = data.layoutGrow;
+    if (data.constraints !== undefined) node.constraints = data.constraints;
+
+    // 3. Set Dimensions
+    if (data.width !== undefined && data.height !== undefined) {
+      // Use resize to avoid layout shifts in some contexts
+      node.resize(data.width, data.height);
+    }
+
+    // 4. Set Coordinates & Rotation
+    if (data.rotation !== undefined) node.rotation = data.rotation;
+    if (data.x !== undefined) node.x = data.x;
+    if (data.y !== undefined) node.y = data.y;
+
+    // 5. Set Min/Max Dimensions
+    try {
+      if (data.minWidth !== undefined) node.minWidth = data.minWidth;
+      if (data.maxWidth !== undefined) node.maxWidth = data.maxWidth;
+      if (data.minHeight !== undefined) node.minHeight = data.minHeight;
+      if (data.maxHeight !== undefined) node.maxHeight = data.maxHeight;
+    } catch (e) { }
+
+  } catch (e) {
+    // console.warn(`[class-manager] failed to apply base layout for ${node.name}:`, e);
+  }
 }
 
 function applyBoundVariables(node: SceneNode, boundVariables: SerializedNode["boundVariables"]) {
@@ -485,7 +522,7 @@ function applyCorners(node: any, data: SerializedNode) {
   } catch (e) { }
 }
 
-function applyFrameLayout(frame: FrameNode | ComponentNode | InstanceNode, data: SerializedNode) {
+function applyFrameLayout(frame: FrameNode | ComponentNode | InstanceNode | ComponentSetNode, data: SerializedNode) {
   try { if (data.layoutMode !== undefined) (frame as any).layoutMode = data.layoutMode; } catch (e) { }
 
   // These properties only exist when Auto Layout is enabled (horizontal or vertical)
@@ -778,7 +815,7 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
  * This skip creation but applies fills, strokes, effects, etc.
  */
 async function applyOverrides(node: SceneNode, data: SerializedNode) {
-  // Handle Instance Swap if necessary
+  // 1. Handle Instance Swapping
   if (node.type === "INSTANCE" && data.type === "INSTANCE" && data.mainComponentKey) {
     const inst = node as InstanceNode;
     if (!inst.mainComponent || inst.mainComponent.key !== data.mainComponentKey) {
@@ -791,7 +828,7 @@ async function applyOverrides(node: SceneNode, data: SerializedNode) {
     }
   }
 
-  // Apply visual properties
+  // 2. Apply Visual Properties (Fills, Strokes, Effects)
   if ("fills" in node) applyFills(node as any, data.fills);
   if ("strokes" in node) applyStrokes(node as any, data);
   if ("effects" in node) applyEffects(node as any, data.effects);
@@ -804,35 +841,48 @@ async function applyOverrides(node: SceneNode, data: SerializedNode) {
   if ("visible" in node && data.visible !== undefined) node.visible = data.visible;
   if ("blendMode" in node && data.blendMode !== undefined) (node as any).blendMode = data.blendMode;
 
-  // Corners
-  if (node.type === "RECTANGLE" || node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE") {
+  // 3. Apply Corner radius
+  if ("cornerRadius" in node) {
     applyCorners(node as any, data);
   }
 
-  // Layout
-  if (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE") {
+  // 4. Apply Layout & Positioning (Crucial for "Alignment Position")
+  // We call this on ALL nodes because even simple Rectangles can have layoutAlign/Pos overrides
+  applyBaseLayout(node as any, data);
+
+  // Apply Frame-specific layout (Auto Layout props)
+  if (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE" || node.type === "COMPONENT_SET") {
     applyFrameLayout(node as any, data);
-    applyBaseLayout(node as any, data);
   }
 
-  // Text
+  // 5. Apply Text-specific overrides
   if (node.type === "TEXT" && data.type === "TEXT") {
     const t = node as TextNode;
     if (data.characters !== undefined) t.characters = data.characters;
     if (data.fontSize !== undefined) t.fontSize = data.fontSize;
     if (data.fontName) {
-      await figma.loadFontAsync(data.fontName);
-      t.fontName = data.fontName;
+      try {
+        await figma.loadFontAsync(data.fontName);
+        t.fontName = data.fontName;
+      } catch (e) { }
     }
+    if (data.textAlignHorizontal) t.textAlignHorizontal = data.textAlignHorizontal as any;
+    if (data.textAlignVertical) t.textAlignVertical = data.textAlignVertical as any;
+    if (data.letterSpacing) t.letterSpacing = data.letterSpacing as any;
+    if (data.lineHeight) t.lineHeight = data.lineHeight as any;
   }
 
-  // Recursively apply to children (for nested overrides)
+  // 6. Recursively apply to children (Nested Overrides)
   if (data.children && "children" in node) {
-    const children = (node as any).children as SceneNode[];
+    const children = Array.from((node as any).children as SceneNode[]);
+    const matchedIndices = new Set<number>();
+
     for (const childData of data.children) {
-      const found = children.find(c => c.name === childData.name);
-      if (found) {
-        await applyOverrides(found, childData);
+      // Heuristic: match by name, ensuring we don't match the same node twice
+      const foundIdx = children.findIndex((c, i) => c.name === childData.name && !matchedIndices.has(i));
+      if (foundIdx >= 0) {
+        matchedIndices.add(foundIdx);
+        await applyOverrides(children[foundIdx], childData);
       }
     }
   }

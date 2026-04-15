@@ -79,7 +79,11 @@
       layoutAlign: "layoutAlign" in node ? node.layoutAlign : "INHERIT",
       layoutGrow: "layoutGrow" in node ? node.layoutGrow : 0,
       layoutPositioning: "layoutPositioning" in node ? node.layoutPositioning : "AUTO",
-      constraints: "constraints" in node ? node.constraints : void 0
+      constraints: "constraints" in node ? node.constraints : void 0,
+      minWidth: "minWidth" in node ? node.minWidth : void 0,
+      maxWidth: "maxWidth" in node ? node.maxWidth : void 0,
+      minHeight: "minHeight" in node ? node.minHeight : void 0,
+      maxHeight: "maxHeight" in node ? node.maxHeight : void 0
     };
     if (node.type === "INSTANCE") {
       const inst = node;
@@ -181,19 +185,23 @@
   }
   function applyBaseLayout(node, data) {
     try {
-      if (data.layoutAlign !== void 0) node.layoutAlign = data.layoutAlign;
-    } catch (e) {
-    }
-    try {
-      if (data.layoutGrow !== void 0) node.layoutGrow = data.layoutGrow;
-    } catch (e) {
-    }
-    try {
       if (data.layoutPositioning !== void 0) node.layoutPositioning = data.layoutPositioning;
-    } catch (e) {
-    }
-    try {
+      if (data.layoutAlign !== void 0) node.layoutAlign = data.layoutAlign;
+      if (data.layoutGrow !== void 0) node.layoutGrow = data.layoutGrow;
       if (data.constraints !== void 0) node.constraints = data.constraints;
+      if (data.width !== void 0 && data.height !== void 0) {
+        node.resize(data.width, data.height);
+      }
+      if (data.rotation !== void 0) node.rotation = data.rotation;
+      if (data.x !== void 0) node.x = data.x;
+      if (data.y !== void 0) node.y = data.y;
+      try {
+        if (data.minWidth !== void 0) node.minWidth = data.minWidth;
+        if (data.maxWidth !== void 0) node.maxWidth = data.maxWidth;
+        if (data.minHeight !== void 0) node.minHeight = data.minHeight;
+        if (data.maxHeight !== void 0) node.maxHeight = data.maxHeight;
+      } catch (e) {
+      }
     } catch (e) {
     }
   }
@@ -687,28 +695,37 @@
     if ("opacity" in node && data.opacity !== void 0) node.opacity = data.opacity;
     if ("visible" in node && data.visible !== void 0) node.visible = data.visible;
     if ("blendMode" in node && data.blendMode !== void 0) node.blendMode = data.blendMode;
-    if (node.type === "RECTANGLE" || node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE") {
+    if ("cornerRadius" in node) {
       applyCorners(node, data);
     }
-    if (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE") {
+    applyBaseLayout(node, data);
+    if (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE" || node.type === "COMPONENT_SET") {
       applyFrameLayout(node, data);
-      applyBaseLayout(node, data);
     }
     if (node.type === "TEXT" && data.type === "TEXT") {
       const t = node;
       if (data.characters !== void 0) t.characters = data.characters;
       if (data.fontSize !== void 0) t.fontSize = data.fontSize;
       if (data.fontName) {
-        await figma.loadFontAsync(data.fontName);
-        t.fontName = data.fontName;
+        try {
+          await figma.loadFontAsync(data.fontName);
+          t.fontName = data.fontName;
+        } catch (e) {
+        }
       }
+      if (data.textAlignHorizontal) t.textAlignHorizontal = data.textAlignHorizontal;
+      if (data.textAlignVertical) t.textAlignVertical = data.textAlignVertical;
+      if (data.letterSpacing) t.letterSpacing = data.letterSpacing;
+      if (data.lineHeight) t.lineHeight = data.lineHeight;
     }
     if (data.children && "children" in node) {
-      const children = node.children;
+      const children = Array.from(node.children);
+      const matchedIndices = /* @__PURE__ */ new Set();
       for (const childData of data.children) {
-        const found = children.find((c) => c.name === childData.name);
-        if (found) {
-          await applyOverrides(found, childData);
+        const foundIdx = children.findIndex((c, i) => c.name === childData.name && !matchedIndices.has(i));
+        if (foundIdx >= 0) {
+          matchedIndices.add(foundIdx);
+          await applyOverrides(children[foundIdx], childData);
         }
       }
     }
