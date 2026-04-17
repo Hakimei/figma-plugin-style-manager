@@ -940,7 +940,7 @@ function generateId(): string {
 // Main plugin logic
 // ─────────────────────────────────────────────────────────────────────────────
 
-figma.showUI(__html__, { width: 365, height: 570, title: "Styles Managers", themeColors: true });
+figma.showUI(__html__, { width: 368, height: 570, title: "Styles Managers", themeColors: true });
 
 let pinnedNode: any = null;
 
