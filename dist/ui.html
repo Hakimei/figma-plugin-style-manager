@@ -936,6 +936,59 @@
       color: var(--foreground);
     }
 
+    .btn-toggle-details {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--muted-foreground);
+      background: transparent;
+      border: none;
+      padding: 2px 4px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    .btn-toggle-details:hover {
+      color: var(--foreground);
+      background: var(--secondary);
+    }
+
+    .btn-toggle-details svg {
+      transition: transform var(--transition-base);
+    }
+
+    .btn-toggle-details[data-open="true"] svg {
+      transform: rotate(180deg);
+    }
+
+    .save-details-content {
+      display: grid;
+      grid-template-rows: 0fr;
+      transition: grid-template-rows var(--transition-base) var(--panel-ease),
+        opacity var(--transition-base) var(--panel-ease);
+      overflow: hidden;
+      opacity: 0;
+      padding: 0 4px;
+      margin: 0 -4px;
+    }
+
+    .save-details-content[data-open="true"] {
+      grid-template-rows: 1fr;
+      opacity: 1;
+      margin-bottom: 8px;
+    }
+
+    .save-details-inner {
+      min-height: 0;
+      padding-top: 4px;
+      padding-bottom: 4px;
+    }
+
     /* ── Separator ── */
     .separator {
       height: 1px;
@@ -1333,24 +1386,35 @@
         <div class="selection-indicator" id="globalSelectionIndicator">
           <div class="selection-dot"></div>
           <span class="selection-text" id="globalSelectionText">No frame selected on canvas</span>
+          <button class="btn-toggle-details" id="globalToggleDetails" title="Show details" data-open="false">
+            Details
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
         </div>
 
-        <div class="form-row">
-          <div class="field">
-            <label class="field-label" for="globalLabelInput">Label</label>
-            <input class="input" id="globalLabelInput" type="text" placeholder="e.g. Layout" />
-          </div>
-          <div class="field">
-            <label class="field-label" for="globalNameInput">Name</label>
-            <input class="input" id="globalNameInput" type="text" placeholder="e.g. Container" />
-          </div>
-        </div>
+        <div class="save-details-content" id="globalSaveDetails" data-open="false">
+          <div class="save-details-inner">
+            <div class="form-row">
+              <div class="field">
+                <label class="field-label" for="globalLabelInput">Label</label>
+                <input class="input" id="globalLabelInput" type="text" placeholder="e.g. Layout" />
+              </div>
+              <div class="field">
+                <label class="field-label" for="globalNameInput">Name</label>
+                <input class="input" id="globalNameInput" type="text" placeholder="e.g. Container" />
+              </div>
+            </div>
 
-        <div class="form-row" style="margin-top: 8px;">
-          <div class="field">
-            <label class="field-label" for="globalDescriptionInput">Description</label>
-            <input class="input" id="globalDescriptionInput" type="text" maxlength="140"
-              placeholder="e.g. Standard layout container for cards" />
+            <div class="form-row" style="margin-top: 8px;">
+              <div class="field">
+                <label class="field-label" for="globalDescriptionInput">Description</label>
+                <input class="input" id="globalDescriptionInput" type="text" maxlength="140"
+                  placeholder="e.g. Standard layout container for cards" />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1434,24 +1498,35 @@
         <div class="selection-indicator" id="personalSelectionIndicator">
           <div class="selection-dot"></div>
           <span class="selection-text" id="personalSelectionText">No frame selected on canvas</span>
+          <button class="btn-toggle-details" id="personalToggleDetails" title="Show details" data-open="false">
+            Details
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
         </div>
 
-        <div class="form-row">
-          <div class="field">
-            <label class="field-label" for="personalLabelInput">Label</label>
-            <input class="input" id="personalLabelInput" type="text" placeholder="e.g. Layout" />
-          </div>
-          <div class="field">
-            <label class="field-label" for="personalNameInput">Name</label>
-            <input class="input" id="personalNameInput" type="text" placeholder="e.g. Container" />
-          </div>
-        </div>
+        <div class="save-details-content" id="personalSaveDetails" data-open="false">
+          <div class="save-details-inner">
+            <div class="form-row">
+              <div class="field">
+                <label class="field-label" for="personalLabelInput">Label</label>
+                <input class="input" id="personalLabelInput" type="text" placeholder="e.g. Layout" />
+              </div>
+              <div class="field">
+                <label class="field-label" for="personalNameInput">Name</label>
+                <input class="input" id="personalNameInput" type="text" placeholder="e.g. Container" />
+              </div>
+            </div>
 
-        <div class="form-row" style="margin-top: 8px;">
-          <div class="field">
-            <label class="field-label" for="personalDescriptionInput">Description</label>
-            <input class="input" id="personalDescriptionInput" type="text" maxlength="140"
-              placeholder="e.g. My custom button style" />
+            <div class="form-row" style="margin-top: 8px;">
+              <div class="field">
+                <label class="field-label" for="personalDescriptionInput">Description</label>
+                <input class="input" id="personalDescriptionInput" type="text" maxlength="140"
+                  placeholder="e.g. My custom button style" />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1683,6 +1758,12 @@
             text.textContent = msg.nodeName || "Frame selected";
             saveSection.dataset.open = "true";
 
+            // Close details by default
+            const toggleBtn = document.getElementById(scope + "ToggleDetails");
+            const detailsContainer = document.getElementById(scope + "SaveDetails");
+            if (toggleBtn) toggleBtn.dataset.open = "false";
+            if (detailsContainer) detailsContainer.dataset.open = "false";
+
             const classes = scope === "global" ? globalClasses : personalClasses;
             const nodeName = msg.nodeName || "";
             const parentName = msg.parentName || "";
@@ -1774,6 +1855,13 @@
             indicator.classList.remove("has-selection");
             text.textContent = "No frame selected on canvas";
             saveSection.dataset.open = "false";
+            
+            // Close details when no selection
+            const toggleBtn = document.getElementById(scope + "ToggleDetails");
+            const detailsContainer = document.getElementById(scope + "SaveDetails");
+            if (toggleBtn) toggleBtn.dataset.open = "false";
+            if (detailsContainer) detailsContainer.dataset.open = "false";
+
             if (nameInput) nameInput.value = "";
             if (labelInput) labelInput.value = "";
             if (descriptionInput) descriptionInput.value = "";
@@ -2118,6 +2206,19 @@
     document.getElementById("personalInsertBtn").addEventListener("click", () => {
       if (!personalSelectedId) return;
       post({ type: "insert-class", id: personalSelectedId, scope: "personal" });
+    });
+
+    // ── Details Toggle ──
+    ["global", "personal"].forEach((scope) => {
+      const toggleBtn = document.getElementById(scope + "ToggleDetails");
+      const detailsContainer = document.getElementById(scope + "SaveDetails");
+      if (toggleBtn && detailsContainer) {
+        toggleBtn.addEventListener("click", () => {
+          const isOpen = toggleBtn.dataset.open === "true";
+          toggleBtn.dataset.open = isOpen ? "false" : "true";
+          detailsContainer.dataset.open = isOpen ? "false" : "true";
+        });
+      }
     });
 
     // ── Save actions ──
