@@ -6,23 +6,27 @@
     var _a;
     let def;
     if (paint.type === "SOLID") {
-      const p2 = paint;
-      def = { type: "SOLID", color: { r: p2.color.r, g: p2.color.g, b: p2.color.b }, opacity: (_a = p2.opacity) != null ? _a : 1 };
+      const solidPaint = paint;
+      def = {
+        type: "SOLID",
+        color: { r: solidPaint.color.r, g: solidPaint.color.g, b: solidPaint.color.b },
+        opacity: (_a = solidPaint.opacity) != null ? _a : 1
+      };
     } else if (paint.type === "GRADIENT_LINEAR" || paint.type === "GRADIENT_RADIAL" || paint.type === "GRADIENT_ANGULAR" || paint.type === "GRADIENT_DIAMOND") {
-      const p2 = paint;
+      const gradientPaint = paint;
       def = {
         type: paint.type,
-        gradientStops: p2.gradientStops.map((s) => ({
-          position: s.position,
-          color: { r: s.color.r, g: s.color.g, b: s.color.b, a: s.color.a }
+        gradientStops: gradientPaint.gradientStops.map((stop) => ({
+          position: stop.position,
+          color: { r: stop.color.r, g: stop.color.g, b: stop.color.b, a: stop.color.a }
         }))
       };
     } else {
       def = { type: paint.type };
     }
-    const p = paint;
-    if (p.boundVariables && Object.keys(p.boundVariables).length > 0) {
-      def.boundVariables = JSON.parse(JSON.stringify(p.boundVariables));
+    const paintWithVariables = paint;
+    if (paintWithVariables.boundVariables && Object.keys(paintWithVariables.boundVariables).length > 0) {
+      def.boundVariables = JSON.parse(JSON.stringify(paintWithVariables.boundVariables));
     }
     return def;
   }
@@ -64,7 +68,32 @@
   function safeStrokes(node) {
     return typeof node.strokes === "symbol" ? [] : node.strokes.map(serializePaint);
   }
+  function getParentLayoutMode(node) {
+    const parent = node.parent;
+    if (!parent || !("layoutMode" in parent)) return void 0;
+    return parent.layoutMode;
+  }
+  function normalizeLayoutSizing(node, axis) {
+    if (!("layoutSizingHorizontal" in node) || !("layoutSizingVertical" in node)) return void 0;
+    const raw = axis === "HORIZONTAL" ? node.layoutSizingHorizontal : node.layoutSizingVertical;
+    if (!raw) return void 0;
+    const parentLayoutMode = getParentLayoutMode(node);
+    const hasAutoLayoutParent = parentLayoutMode === "HORIZONTAL" || parentLayoutMode === "VERTICAL";
+    if (raw === "FILL") {
+      return hasAutoLayoutParent ? "FILL" : "FIXED";
+    }
+    if (raw === "HUG") {
+      if (node.type === "TEXT") return "HUG";
+      const nodeIsAutoLayoutFrame = node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE" || node.type === "COMPONENT_SET";
+      if (nodeIsAutoLayoutFrame && node.layoutMode !== "NONE") {
+        return "HUG";
+      }
+      return "FIXED";
+    }
+    return raw;
+  }
   function serializeNode(node) {
+    var _a;
     const base = {
       type: node.type,
       name: node.name,
@@ -79,6 +108,8 @@
       layoutAlign: "layoutAlign" in node ? node.layoutAlign : "INHERIT",
       layoutGrow: "layoutGrow" in node ? node.layoutGrow : 0,
       layoutPositioning: "layoutPositioning" in node ? node.layoutPositioning : "AUTO",
+      layoutSizingHorizontal: normalizeLayoutSizing(node, "HORIZONTAL"),
+      layoutSizingVertical: normalizeLayoutSizing(node, "VERTICAL"),
       constraints: "constraints" in node ? node.constraints : void 0,
       minWidth: "minWidth" in node ? node.minWidth : void 0,
       maxWidth: "maxWidth" in node ? node.maxWidth : void 0,
@@ -143,13 +174,16 @@
       base.layoutMode = f.layoutMode === "GRID" ? "NONE" : f.layoutMode;
       base.primaryAxisSizingMode = f.primaryAxisSizingMode;
       base.counterAxisSizingMode = f.counterAxisSizingMode;
+      base.layoutWrap = f.layoutWrap;
       base.primaryAxisAlignItems = f.primaryAxisAlignItems;
       base.counterAxisAlignItems = f.counterAxisAlignItems;
+      base.counterAxisAlignContent = f.counterAxisAlignContent;
       base.paddingTop = f.paddingTop;
       base.paddingBottom = f.paddingBottom;
       base.paddingLeft = f.paddingLeft;
       base.paddingRight = f.paddingRight;
       base.itemSpacing = f.itemSpacing;
+      base.counterAxisSpacing = (_a = f.counterAxisSpacing) != null ? _a : void 0;
       base.itemReverseZIndex = f.itemReverseZIndex;
       base.strokesIncludedInLayout = f.strokesIncludedInLayout;
       base.clipsContent = f.clipsContent;
@@ -183,15 +217,85 @@
     }
     return base;
   }
+  function getAxisSizingMode(data, axis) {
+    if (!data.layoutMode || data.layoutMode === "NONE") return void 0;
+    if (data.layoutMode === "HORIZONTAL") {
+      return axis === "width" ? data.primaryAxisSizingMode : data.counterAxisSizingMode;
+    }
+    return axis === "width" ? data.counterAxisSizingMode : data.primaryAxisSizingMode;
+  }
+  function inferLegacyLayoutSizing(node, data, axis) {
+    const parent = node.parent;
+    const parentLayoutMode = parent && "layoutMode" in parent ? parent.layoutMode : void 0;
+    if (parentLayoutMode === "HORIZONTAL") {
+      if (axis === "HORIZONTAL" && data.layoutGrow === 1) return "FILL";
+      if (axis === "VERTICAL" && data.layoutAlign === "STRETCH") return "FILL";
+    }
+    if (parentLayoutMode === "VERTICAL") {
+      if (axis === "HORIZONTAL" && data.layoutAlign === "STRETCH") return "FILL";
+      if (axis === "VERTICAL" && data.layoutGrow === 1) return "FILL";
+    }
+    if (data.type === "TEXT") {
+      return void 0;
+    }
+    const nodeIsAutoLayoutFrame = data.type === "FRAME" || data.type === "COMPONENT" || data.type === "INSTANCE" || data.type === "COMPONENT_SET";
+    if (!nodeIsAutoLayoutFrame || !data.layoutMode || data.layoutMode === "NONE") {
+      return "FIXED";
+    }
+    const sizingMode = axis === "HORIZONTAL" ? getAxisSizingMode(data, "width") : getAxisSizingMode(data, "height");
+    if (sizingMode === "AUTO") return "HUG";
+    if (sizingMode === "FIXED") return "FIXED";
+    return void 0;
+  }
+  function getEffectiveLayoutSizing(node, data, axis) {
+    if (axis === "HORIZONTAL" && data.layoutSizingHorizontal) {
+      return data.layoutSizingHorizontal;
+    }
+    if (axis === "VERTICAL" && data.layoutSizingVertical) {
+      return data.layoutSizingVertical;
+    }
+    return inferLegacyLayoutSizing(node, data, axis);
+  }
+  function applyLayoutSizing(node, data) {
+    try {
+      const horizontal = getEffectiveLayoutSizing(node, data, "HORIZONTAL");
+      if (horizontal !== void 0) {
+        node.layoutSizingHorizontal = horizontal;
+      }
+    } catch (e) {
+    }
+    try {
+      const vertical = getEffectiveLayoutSizing(node, data, "VERTICAL");
+      if (vertical !== void 0) {
+        node.layoutSizingVertical = vertical;
+      }
+    } catch (e) {
+    }
+  }
+  function applyNodeResize(node, data) {
+    var _a, _b;
+    if (typeof node.resize !== "function") return;
+    if (data.width === void 0 || data.height === void 0) return;
+    const horizontalSizing = getEffectiveLayoutSizing(node, data, "HORIZONTAL");
+    const verticalSizing = getEffectiveLayoutSizing(node, data, "VERTICAL");
+    const preserveWidth = horizontalSizing === "HUG" || horizontalSizing === "FILL" || getAxisSizingMode(data, "width") === "AUTO";
+    const preserveHeight = verticalSizing === "HUG" || verticalSizing === "FILL" || getAxisSizingMode(data, "height") === "AUTO";
+    if (!preserveWidth && !preserveHeight) {
+      node.resize(data.width, data.height);
+      return;
+    }
+    const nextWidth = preserveWidth ? Math.max((_a = node.width) != null ? _a : 1, 1) : data.width;
+    const nextHeight = preserveHeight ? Math.max((_b = node.height) != null ? _b : 1, 1) : data.height;
+    node.resize(nextWidth, nextHeight);
+  }
   function applyBaseLayout(node, data) {
     try {
       if (data.layoutPositioning !== void 0) node.layoutPositioning = data.layoutPositioning;
+      applyLayoutSizing(node, data);
       if (data.layoutAlign !== void 0) node.layoutAlign = data.layoutAlign;
       if (data.layoutGrow !== void 0) node.layoutGrow = data.layoutGrow;
       if (data.constraints !== void 0) node.constraints = data.constraints;
-      if (data.width !== void 0 && data.height !== void 0) {
-        node.resize(data.width, data.height);
-      }
+      applyNodeResize(node, data);
       if (data.rotation !== void 0) node.rotation = data.rotation;
       if (data.x !== void 0) node.x = data.x;
       if (data.y !== void 0) node.y = data.y;
@@ -337,6 +441,10 @@
       } catch (e) {
       }
       try {
+        if (data.layoutWrap) frame.layoutWrap = data.layoutWrap;
+      } catch (e) {
+      }
+      try {
         if (data.primaryAxisAlignItems) frame.primaryAxisAlignItems = data.primaryAxisAlignItems;
       } catch (e) {
       }
@@ -345,7 +453,15 @@
       } catch (e) {
       }
       try {
+        if (data.counterAxisAlignContent) frame.counterAxisAlignContent = data.counterAxisAlignContent;
+      } catch (e) {
+      }
+      try {
         if (data.itemSpacing !== void 0) frame.itemSpacing = data.itemSpacing;
+      } catch (e) {
+      }
+      try {
+        if (data.counterAxisSpacing !== void 0) frame.counterAxisSpacing = data.counterAxisSpacing;
       } catch (e) {
       }
       try {
@@ -429,7 +545,6 @@
         frame = figma.createFrame();
       }
       frame.name = data.name;
-      frame.resize(data.width, data.height);
       frame.x = data.x;
       frame.y = data.y;
       frame.rotation = data.rotation;
