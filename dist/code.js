@@ -92,7 +92,7 @@
     }
     return raw;
   }
-  function serializeNode(node) {
+  async function serializeNode(node, context) {
     var _a;
     const base = {
       type: node.type,
@@ -118,9 +118,17 @@
     };
     if (node.type === "INSTANCE") {
       const inst = node;
-      if (inst.mainComponent) {
-        base.mainComponentKey = inst.mainComponent.key;
-        base.mainComponentId = inst.mainComponent.id;
+      try {
+        const mainComponent = await inst.getMainComponentAsync();
+        if (mainComponent) {
+          base.mainComponentKey = mainComponent.key;
+          base.mainComponentId = mainComponent.id;
+        } else if (context) {
+          context.unresolvedMainComponentCount += 1;
+        }
+      } catch (e) {
+        if (context) context.unresolvedMainComponentCount += 1;
+        console.warn("[class-manager] could not resolve instance main component while saving:", e);
       }
     }
     if ("boundVariables" in node && node.boundVariables) {
@@ -187,11 +195,11 @@
       base.itemReverseZIndex = f.itemReverseZIndex;
       base.strokesIncludedInLayout = f.strokesIncludedInLayout;
       base.clipsContent = f.clipsContent;
-      base.children = f.children.map(serializeNode);
+      base.children = await Promise.all(f.children.map((child) => serializeNode(child, context)));
     }
     if (node.type === "GROUP") {
       const g = node;
-      base.children = g.children.map(serializeNode);
+      base.children = await Promise.all(g.children.map((child) => serializeNode(child, context)));
     }
     if (node.type === "TEXT") {
       const t = node;
@@ -529,7 +537,7 @@
         }
         if (!comp && data.mainComponentId) {
           try {
-            const found = figma.getNodeById(data.mainComponentId);
+            const found = await figma.getNodeByIdAsync(data.mainComponentId);
             if (found && found.type === "COMPONENT") comp = found;
           } catch (e) {
           }
@@ -783,7 +791,8 @@
   async function applyOverrides(node, data) {
     if (node.type === "INSTANCE" && data.type === "INSTANCE" && data.mainComponentKey) {
       const inst = node;
-      if (!inst.mainComponent || inst.mainComponent.key !== data.mainComponentKey) {
+      const currentMainComponent = await inst.getMainComponentAsync();
+      if (!currentMainComponent || currentMainComponent.key !== data.mainComponentKey) {
         try {
           const newComp = await figma.importComponentByKeyAsync(data.mainComponentKey);
           inst.swapComponent(newComp);
@@ -1028,7 +1037,8 @@
           figma.ui.postMessage({ type: "error", message: "Selected frame no longer exists." });
           return;
         }
-        const nodeTree = serializeNode(node);
+        const serializeContext = { unresolvedMainComponentCount: 0 };
+        const nodeTree = await serializeNode(node, serializeContext);
         const classes = await loadClasses(scope);
         const now = (/* @__PURE__ */ new Date()).toISOString();
         const existingIdx = classes.findIndex((c) => c.name === msg.name && (c.label || "") === (msg.label || ""));
@@ -1053,6 +1063,13 @@
         await saveClasses(scope, classes);
         notifyLoaded(scope, classes);
         figma.ui.postMessage({ type: "success", message: `Preset "${msg.name}" saved (${scope}).` });
+        if (serializeContext.unresolvedMainComponentCount > 0) {
+          const count = serializeContext.unresolvedMainComponentCount;
+          figma.ui.postMessage({
+            type: "warning",
+            message: `${count} instance component reference${count > 1 ? "s were" : " was"} unavailable while saving. Those instances may restore as frames.`
+          });
+        }
       } catch (err) {
         figma.ui.postMessage({ type: "error", message: `Save failed: ${String(err)}` });
       }

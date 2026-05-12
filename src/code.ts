@@ -134,6 +134,10 @@ interface ClassDefinition {
   createdAt: string;
 }
 
+interface SerializeContext {
+  unresolvedMainComponentCount: number;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
@@ -267,7 +271,7 @@ function normalizeLayoutSizing(
 }
 
 /** Recursively serialize a node and all its children. */
-function serializeNode(node: SceneNode): SerializedNode {
+async function serializeNode(node: SceneNode, context?: SerializeContext): Promise<SerializedNode> {
   const base: SerializedNode = {
     type: node.type,
     name: node.name,
@@ -293,9 +297,17 @@ function serializeNode(node: SceneNode): SerializedNode {
 
   if (node.type === "INSTANCE") {
     const inst = node as InstanceNode;
-    if (inst.mainComponent) {
-      base.mainComponentKey = inst.mainComponent.key;
-      base.mainComponentId = inst.mainComponent.id;
+    try {
+      const mainComponent = await inst.getMainComponentAsync();
+      if (mainComponent) {
+        base.mainComponentKey = mainComponent.key;
+        base.mainComponentId = mainComponent.id;
+      } else if (context) {
+        context.unresolvedMainComponentCount += 1;
+      }
+    } catch (e) {
+      if (context) context.unresolvedMainComponentCount += 1;
+      console.warn("[class-manager] could not resolve instance main component while saving:", e);
     }
   }
 
@@ -374,13 +386,13 @@ function serializeNode(node: SceneNode): SerializedNode {
     base.itemReverseZIndex = f.itemReverseZIndex;
     base.strokesIncludedInLayout = f.strokesIncludedInLayout;
     base.clipsContent = f.clipsContent;
-    base.children = f.children.map(serializeNode);
+    base.children = await Promise.all(f.children.map((child) => serializeNode(child, context)));
   }
 
   // Group
   if (node.type === "GROUP") {
     const g = node as GroupNode;
-    base.children = g.children.map(serializeNode);
+    base.children = await Promise.all(g.children.map((child) => serializeNode(child, context)));
   }
 
   // Text
@@ -751,7 +763,7 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
       }
       if (!comp && data.mainComponentId) {
         try {
-          const found = figma.getNodeById(data.mainComponentId);
+          const found = await figma.getNodeByIdAsync(data.mainComponentId);
           if (found && found.type === "COMPONENT") comp = found;
         } catch (e) { }
       }
@@ -985,7 +997,8 @@ async function applyOverrides(node: SceneNode, data: SerializedNode) {
   // 1. Handle Instance Swapping
   if (node.type === "INSTANCE" && data.type === "INSTANCE" && data.mainComponentKey) {
     const inst = node as InstanceNode;
-    if (!inst.mainComponent || inst.mainComponent.key !== data.mainComponentKey) {
+    const currentMainComponent = await inst.getMainComponentAsync();
+    if (!currentMainComponent || currentMainComponent.key !== data.mainComponentKey) {
       try {
         const newComp = await figma.importComponentByKeyAsync(data.mainComponentKey);
         inst.swapComponent(newComp);
@@ -1278,7 +1291,8 @@ figma.ui.onmessage = async (msg) => {
         return;
       }
 
-      const nodeTree = serializeNode(node);
+      const serializeContext: SerializeContext = { unresolvedMainComponentCount: 0 };
+      const nodeTree = await serializeNode(node, serializeContext);
       const classes = await loadClasses(scope);
       const now = new Date().toISOString();
       const existingIdx = classes.findIndex((c: ClassDefinition) => c.name === msg.name && (c.label || "") === (msg.label || ""));
@@ -1307,6 +1321,13 @@ figma.ui.onmessage = async (msg) => {
       await saveClasses(scope, classes);
       notifyLoaded(scope, classes);
       figma.ui.postMessage({ type: "success", message: `Preset "${msg.name}" saved (${scope}).` });
+      if (serializeContext.unresolvedMainComponentCount > 0) {
+        const count = serializeContext.unresolvedMainComponentCount;
+        figma.ui.postMessage({
+          type: "warning",
+          message: `${count} instance component reference${count > 1 ? "s were" : " was"} unavailable while saving. Those instances may restore as frames.`,
+        });
+      }
     } catch (err) {
       figma.ui.postMessage({ type: "error", message: `Save failed: ${String(err)}` });
     }
