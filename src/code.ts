@@ -10,19 +10,34 @@ interface VariableAlias {
   id: string;
 }
 
+interface BasePaintDef {
+  type: string;
+  visible?: boolean;
+  opacity?: number;
+  blendMode?: BlendMode;
+  boundVariables?: { [property: string]: VariableAlias };
+  [property: string]: any;
+}
+
 interface SolidPaintDef {
   type: "SOLID";
   color: PluginRGB;
-  opacity: number;
+  visible?: boolean;
+  opacity?: number;
+  blendMode?: BlendMode;
   boundVariables?: { [property: string]: VariableAlias };
 }
 interface GradientStop { position: number; color: PluginRGBA }
 interface GradientPaintDef {
   type: "GRADIENT_LINEAR" | "GRADIENT_RADIAL" | "GRADIENT_ANGULAR" | "GRADIENT_DIAMOND";
+  gradientTransform?: Transform;
   gradientStops: GradientStop[];
+  visible?: boolean;
+  opacity?: number;
+  blendMode?: BlendMode;
   boundVariables?: { [property: string]: VariableAlias };
 }
-type PaintDef = SolidPaintDef | GradientPaintDef | { type: string; boundVariables?: { [property: string]: VariableAlias } };
+type PaintDef = SolidPaintDef | GradientPaintDef | BasePaintDef;
 
 interface ShadowDef {
   type: "DROP_SHADOW" | "INNER_SHADOW" | "LAYER_BLUR" | "BACKGROUND_BLUR";
@@ -49,7 +64,8 @@ interface SerializedNode {
   blendMode: string;
   visible: boolean;
   // Variables
-  boundVariables?: { [property: string]: VariableAlias | VariableAlias[] };
+  boundVariables?: { [property: string]: VariableAlias | VariableAlias[] | VariableAlias[][] | { [propertyName: string]: VariableAlias } };
+  explicitVariableModes?: { [collectionId: string]: string };
   // Shared visual
   fills?: PaintDef[];
   fillStyleId?: string;
@@ -65,14 +81,26 @@ interface SerializedNode {
   strokeCap?: string;
   strokeJoin?: string;
   strokeMiterLimit?: number;
+  variableWidthStrokeProperties?: VariableWidthStrokeProperties | null;
+  complexStrokeProperties?: ComplexStrokeProperties;
   effects?: ShadowDef[];
   effectStyleId?: string;
   // Shared corners
   cornerRadius?: number;       // -1 = mixed corners
+  cornerSmoothing?: number;
   topLeftRadius?: number;
   topRightRadius?: number;
   bottomLeftRadius?: number;
   bottomRightRadius?: number;
+  // Vector / icon geometry
+  vectorPaths?: VectorPaths;
+  vectorNetwork?: VectorNetwork;
+  handleMirroring?: HandleMirroring;
+  // Shape-specific geometry
+  arcData?: ArcData;
+  pointCount?: number;
+  innerRadius?: number;
+  booleanOperation?: "UNION" | "INTERSECT" | "SUBTRACT" | "EXCLUDE";
   // Auto Layout settings
   layoutMode?: "NONE" | "HORIZONTAL" | "VERTICAL";
   layoutAlign?: "MIN" | "CENTER" | "MAX" | "STRETCH" | "INHERIT";
@@ -148,39 +176,12 @@ const LOCAL_STORAGE_KEY = "local-classes";
 // Serialization helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+function cloneSerializable<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value));
+}
+
 function serializePaint(paint: Paint): PaintDef {
-  let def: PaintDef;
-  if (paint.type === "SOLID") {
-    const solidPaint = paint as SolidPaint;
-    def = {
-      type: "SOLID",
-      color: { r: solidPaint.color.r, g: solidPaint.color.g, b: solidPaint.color.b },
-      opacity: solidPaint.opacity ?? 1,
-    };
-  } else if (
-    paint.type === "GRADIENT_LINEAR" ||
-    paint.type === "GRADIENT_RADIAL" ||
-    paint.type === "GRADIENT_ANGULAR" ||
-    paint.type === "GRADIENT_DIAMOND"
-  ) {
-    const gradientPaint = paint as GradientPaint;
-    def = {
-      type: paint.type,
-      gradientStops: gradientPaint.gradientStops.map((stop) => ({
-        position: stop.position,
-        color: { r: stop.color.r, g: stop.color.g, b: stop.color.b, a: stop.color.a },
-      })),
-    };
-  } else {
-    def = { type: paint.type };
-  }
-
-  const paintWithVariables = paint as Paint & { boundVariables?: { [property: string]: VariableAlias } };
-  if (paintWithVariables.boundVariables && Object.keys(paintWithVariables.boundVariables).length > 0) {
-    def.boundVariables = JSON.parse(JSON.stringify(paintWithVariables.boundVariables));
-  }
-
-  return def;
+  return cloneSerializable(paint as any) as PaintDef;
 }
 
 function serializeEffect(effect: Effect): ShadowDef | null {
@@ -227,6 +228,16 @@ function safeFills(node: any): PaintDef[] {
 
 function safeStrokes(node: any): PaintDef[] {
   return typeof node.strokes === "symbol" ? [] : (node.strokes as Paint[]).map(serializePaint);
+}
+
+function copyPaintBindingAliases(paints: PaintDef[] | undefined, aliases: VariableAlias[] | undefined) {
+  if (!paints || !aliases) return;
+
+  paints.forEach((paint, index) => {
+    const alias = aliases[index];
+    if (!alias) return;
+    paint.boundVariables = { ...(paint.boundVariables || {}), color: alias };
+  });
 }
 
 function getParentLayoutMode(node: SceneNode): "NONE" | "HORIZONTAL" | "VERTICAL" | "GRID" | undefined {
@@ -315,7 +326,14 @@ async function serializeNode(node: SceneNode, context?: SerializeContext): Promi
   if ("boundVariables" in node && node.boundVariables) {
     const bv = node.boundVariables;
     if (Object.keys(bv).length > 0) {
-      base.boundVariables = JSON.parse(JSON.stringify(bv));
+      base.boundVariables = cloneSerializable(bv as any);
+    }
+  }
+
+  if ("explicitVariableModes" in node && node.explicitVariableModes) {
+    const modes = node.explicitVariableModes;
+    if (Object.keys(modes).length > 0) {
+      base.explicitVariableModes = cloneSerializable(modes);
     }
   }
 
@@ -323,6 +341,8 @@ async function serializeNode(node: SceneNode, context?: SerializeContext): Promi
   if ("fills" in node) {
     base.fills = safeFills(node);
     base.strokes = safeStrokes(node);
+    copyPaintBindingAliases(base.fills, (base.boundVariables as any)?.fills);
+    copyPaintBindingAliases(base.strokes, (base.boundVariables as any)?.strokes);
     base.strokeWeight = safeStrokeWeight(node);
     base.strokeAlign = (node as any).strokeAlign;
 
@@ -347,6 +367,12 @@ async function serializeNode(node: SceneNode, context?: SerializeContext): Promi
       const sml = (node as any).strokeMiterLimit;
       base.strokeMiterLimit = typeof sml === "symbol" ? 4 : sml;
     }
+    if ("variableWidthStrokeProperties" in node) {
+      base.variableWidthStrokeProperties = cloneSerializable((node as any).variableWidthStrokeProperties ?? null);
+    }
+    if ("complexStrokeProperties" in node && (node as any).complexStrokeProperties !== undefined) {
+      base.complexStrokeProperties = cloneSerializable((node as any).complexStrokeProperties);
+    }
   }
 
   if ("fillStyleId" in node && node.fillStyleId) base.fillStyleId = node.fillStyleId as string;
@@ -357,14 +383,52 @@ async function serializeNode(node: SceneNode, context?: SerializeContext): Promi
     base.effects = (node.effects as Effect[]).map(serializeEffect).filter((e): e is ShadowDef => e !== null);
   }
 
+  if ("cornerRadius" in node) {
+    base.cornerRadius = safeCornerRadius(node);
+  }
+  if ("cornerSmoothing" in node) {
+    const smoothing = (node as any).cornerSmoothing;
+    if (typeof smoothing !== "symbol") base.cornerSmoothing = smoothing;
+  }
+
   // Rectangle-specific corners
   if (node.type === "RECTANGLE" || node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE" || node.type === "COMPONENT_SET") {
     const r = node as any;
-    base.cornerRadius = safeCornerRadius(r);
     base.topLeftRadius = r.topLeftRadius;
     base.topRightRadius = r.topRightRadius;
     base.bottomLeftRadius = r.bottomLeftRadius;
     base.bottomRightRadius = r.bottomRightRadius;
+  }
+
+  if ("vectorPaths" in node) {
+    base.vectorPaths = cloneSerializable((node as VectorNode).vectorPaths);
+  }
+  if ("vectorNetwork" in node) {
+    base.vectorNetwork = cloneSerializable((node as VectorNode).vectorNetwork);
+  }
+  if ("handleMirroring" in node) {
+    const handleMirroring = (node as any).handleMirroring;
+    if (typeof handleMirroring !== "symbol") base.handleMirroring = handleMirroring;
+  }
+
+  if (node.type === "ELLIPSE") {
+    base.arcData = cloneSerializable((node as EllipseNode).arcData);
+  }
+
+  if (node.type === "POLYGON") {
+    base.pointCount = (node as PolygonNode).pointCount;
+  }
+
+  if (node.type === "STAR") {
+    const star = node as StarNode;
+    base.pointCount = star.pointCount;
+    base.innerRadius = star.innerRadius;
+  }
+
+  if (node.type === "BOOLEAN_OPERATION") {
+    const bool = node as BooleanOperationNode;
+    base.booleanOperation = bool.booleanOperation;
+    base.children = await Promise.all(bool.children.map((child) => serializeNode(child, context)));
   }
 
   // Frame / component / instance / component set layout
@@ -573,19 +637,64 @@ function applyBaseLayout(node: any, data: SerializedNode) {
   }
 }
 
-function applyBoundVariables(node: SceneNode, boundVariables: SerializedNode["boundVariables"]) {
+async function getVariableForAlias(alias: VariableAlias | undefined): Promise<Variable | null> {
+  if (!alias || !alias.id) return null;
+  try {
+    return await figma.variables.getVariableByIdAsync(alias.id);
+  } catch (e) {
+    console.warn(`[class-manager] could not resolve variable ${alias.id}:`, e);
+    return null;
+  }
+}
+
+async function applyExplicitVariableModes(node: SceneNode, explicitVariableModes: SerializedNode["explicitVariableModes"]) {
+  if (!explicitVariableModes || !("setExplicitVariableModeForCollection" in node)) return;
+
+  for (const [collectionId, modeId] of Object.entries(explicitVariableModes)) {
+    try {
+      const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+      if (collection) {
+        (node as SceneNode & ExplicitVariableModesMixin).setExplicitVariableModeForCollection(collection, modeId);
+      }
+    } catch (e) {
+      console.warn(`[class-manager] could not apply variable mode ${collectionId}:`, e);
+    }
+  }
+}
+
+async function applyBoundVariables(node: SceneNode, boundVariables: SerializedNode["boundVariables"]) {
   if (!boundVariables) return;
+  const textVariableFields = new Set([
+    "fontFamily",
+    "fontSize",
+    "fontStyle",
+    "fontWeight",
+    "letterSpacing",
+    "lineHeight",
+    "paragraphSpacing",
+    "paragraphIndent",
+  ]);
+
   for (const [prop, value] of Object.entries(boundVariables)) {
     try {
       if (Array.isArray(value)) {
-        // Multi-fill arrays are complex. For now, simple properties only.
+        if (!textVariableFields.has(prop)) continue;
+        if (value.length === 0) continue;
+        const aliases = value.filter((alias): alias is VariableAlias => !Array.isArray(alias) && !!alias && typeof alias.id === "string");
+        if (aliases.length !== value.length) continue;
+        const firstAlias = aliases[0];
+        const allSame = aliases.every((alias) => alias.id === firstAlias.id);
+        if (!allSame) continue;
+
+        const variable = await getVariableForAlias(firstAlias);
+        if (variable && typeof (node as any).setBoundVariable === "function") {
+          (node as any).setBoundVariable(prop, variable);
+        }
       } else {
         const alias = value as VariableAlias;
-        if (alias && alias.id) {
-          const variable = figma.variables.getVariableById(alias.id);
-          if (variable) {
-            node.setBoundVariable(prop as any, variable);
-          }
+        const variable = await getVariableForAlias(alias);
+        if (variable && typeof (node as any).setBoundVariable === "function") {
+          (node as any).setBoundVariable(prop, variable);
         }
       }
     } catch (e) {
@@ -594,17 +703,41 @@ function applyBoundVariables(node: SceneNode, boundVariables: SerializedNode["bo
   }
 }
 
-function applyPaint(def: PaintDef): Paint | null {
+async function applyPaint(def: PaintDef): Promise<Paint | null> {
   let paint: any = null;
   if (def.type === "SOLID") {
     const d = def as SolidPaintDef;
-    paint = { type: "SOLID", color: d.color, opacity: d.opacity };
+    paint = {
+      type: "SOLID",
+      color: d.color,
+      opacity: d.opacity ?? 1,
+      visible: d.visible,
+      blendMode: d.blendMode,
+    };
+  } else if (
+    def.type === "GRADIENT_LINEAR" ||
+    def.type === "GRADIENT_RADIAL" ||
+    def.type === "GRADIENT_ANGULAR" ||
+    def.type === "GRADIENT_DIAMOND"
+  ) {
+    const d = def as GradientPaintDef;
+    paint = {
+      type: d.type,
+      gradientTransform: d.gradientTransform ?? [[1, 0, 0], [0, 1, 0]],
+      gradientStops: d.gradientStops,
+      opacity: d.opacity,
+      visible: d.visible,
+      blendMode: d.blendMode,
+    };
+  } else {
+    paint = cloneSerializable(def) as Paint;
+    delete paint.boundVariables;
   }
 
   if (paint && def.boundVariables) {
     for (const [prop, value] of Object.entries(def.boundVariables)) {
       try {
-        const variable = figma.variables.getVariableById((value as VariableAlias).id);
+        const variable = await getVariableForAlias(value as VariableAlias);
         if (variable) {
           paint = figma.variables.setBoundVariableForPaint(paint, prop as any, variable);
         }
@@ -616,17 +749,29 @@ function applyPaint(def: PaintDef): Paint | null {
   return paint;
 }
 
-function applyFills(node: any, fills: PaintDef[] | undefined) {
+async function applyPaintList(node: any, property: "fills" | "strokes", defs: PaintDef[] | undefined) {
+  if (!defs) return;
+  const paints = (await Promise.all(defs.map(applyPaint))).filter((p): p is Paint => p !== null);
+  const asyncSetter = property === "fills" ? "setFillsAsync" : "setStrokesAsync";
+
+  if (typeof node[asyncSetter] === "function") {
+    await node[asyncSetter](paints);
+  } else {
+    node[property] = paints;
+  }
+}
+
+async function applyFills(node: any, fills: PaintDef[] | undefined) {
   if (!fills) return;
   try {
-    node.fills = fills.map(applyPaint).filter((p): p is Paint => p !== null);
+    await applyPaintList(node, "fills", fills);
   } catch (e) { }
 }
 
-function applyStrokes(node: any, data: SerializedNode) {
+async function applyStrokes(node: any, data: SerializedNode) {
   if (!data.strokes) return;
   try {
-    node.strokes = data.strokes.map(applyPaint).filter((p): p is Paint => p !== null);
+    await applyPaintList(node, "strokes", data.strokes);
 
     if (data.strokeWeight !== undefined) node.strokeWeight = data.strokeWeight;
 
@@ -641,12 +786,31 @@ function applyStrokes(node: any, data: SerializedNode) {
     if (data.strokeCap !== undefined && "strokeCap" in node) node.strokeCap = data.strokeCap as any;
     if (data.strokeJoin !== undefined && "strokeJoin" in node) node.strokeJoin = data.strokeJoin as any;
     if (data.strokeMiterLimit !== undefined && "strokeMiterLimit" in node) node.strokeMiterLimit = data.strokeMiterLimit;
+    if (data.complexStrokeProperties !== undefined && "complexStrokeProperties" in node) {
+      try {
+        const props = data.complexStrokeProperties;
+        if (props.type === "BRUSH") {
+          if (props.brushName === "CUSTOM") throw new Error("custom brushes cannot be restored through the plugin API");
+          await figma.loadBrushesAsync(props.brushType);
+        }
+        node.complexStrokeProperties = props;
+      } catch (e) {
+        console.warn(`[class-manager] could not restore complex stroke on ${data.name}:`, e);
+      }
+    }
+    if (data.variableWidthStrokeProperties !== undefined && "variableWidthStrokeProperties" in node) {
+      try {
+        node.variableWidthStrokeProperties = data.variableWidthStrokeProperties;
+      } catch (e) {
+        console.warn(`[class-manager] could not restore variable-width stroke on ${data.name}:`, e);
+      }
+    }
   } catch (e) { }
 }
 
-function applyEffects(node: any, effects: ShadowDef[] | undefined) {
+async function applyEffects(node: any, effects: ShadowDef[] | undefined) {
   if (!effects) return;
-  node.effects = effects.map((e) => {
+  node.effects = await Promise.all(effects.map(async (e) => {
     let effect: any;
     if (e.type === "DROP_SHADOW" || e.type === "INNER_SHADOW") {
       effect = {
@@ -672,7 +836,7 @@ function applyEffects(node: any, effects: ShadowDef[] | undefined) {
     if (e.boundVariables) {
       for (const [prop, value] of Object.entries(e.boundVariables)) {
         try {
-          const variable = figma.variables.getVariableById((value as VariableAlias).id);
+          const variable = await getVariableForAlias(value as VariableAlias);
           if (variable) {
             effect = figma.variables.setBoundVariableForEffect(effect, prop as any, variable);
           }
@@ -682,13 +846,36 @@ function applyEffects(node: any, effects: ShadowDef[] | undefined) {
       }
     }
     return effect;
-  });
+  }));
+}
+
+async function applyStyleIds(node: any, data: SerializedNode) {
+  try {
+    if (data.fillStyleId && "fillStyleId" in node) {
+      if (typeof node.setFillStyleIdAsync === "function") await node.setFillStyleIdAsync(data.fillStyleId);
+      else node.fillStyleId = data.fillStyleId;
+    }
+  } catch (e) { }
+
+  try {
+    if (data.strokeStyleId && "strokeStyleId" in node) {
+      if (typeof node.setStrokeStyleIdAsync === "function") await node.setStrokeStyleIdAsync(data.strokeStyleId);
+      else node.strokeStyleId = data.strokeStyleId;
+    }
+  } catch (e) { }
+
+  try {
+    if (data.effectStyleId && "effectStyleId" in node) {
+      if (typeof node.setEffectStyleIdAsync === "function") await node.setEffectStyleIdAsync(data.effectStyleId);
+      else node.effectStyleId = data.effectStyleId;
+    }
+  } catch (e) { }
 }
 
 function applyCorners(node: any, data: SerializedNode) {
   const cr = data.cornerRadius;
   try {
-    if (cr !== undefined && cr >= 0 && cr === data.topLeftRadius) {
+    if (cr !== undefined && cr >= 0 && (data.topLeftRadius === undefined || cr === data.topLeftRadius)) {
       node.cornerRadius = cr;
     } else {
       if (data.topLeftRadius !== undefined) node.topLeftRadius = data.topLeftRadius;
@@ -696,7 +883,26 @@ function applyCorners(node: any, data: SerializedNode) {
       if (data.bottomLeftRadius !== undefined) node.bottomLeftRadius = data.bottomLeftRadius;
       if (data.bottomRightRadius !== undefined) node.bottomRightRadius = data.bottomRightRadius;
     }
+    if (data.cornerSmoothing !== undefined && "cornerSmoothing" in node) {
+      node.cornerSmoothing = data.cornerSmoothing;
+    }
   } catch (e) { }
+}
+
+async function applyVectorGeometry(node: any, data: SerializedNode) {
+  try {
+    if (data.vectorNetwork && typeof node.setVectorNetworkAsync === "function") {
+      await node.setVectorNetworkAsync(data.vectorNetwork as VectorNetwork);
+    } else if (data.vectorPaths && "vectorPaths" in node) {
+      node.vectorPaths = data.vectorPaths as VectorPaths;
+    }
+
+    if (data.handleMirroring && "handleMirroring" in node) {
+      node.handleMirroring = data.handleMirroring;
+    }
+  } catch (e) {
+    console.warn(`[class-manager] could not restore vector geometry for ${data.name}:`, e);
+  }
 }
 
 function applyFrameLayout(frame: FrameNode | ComponentNode | InstanceNode | ComponentSetNode, data: SerializedNode) {
@@ -748,7 +954,7 @@ async function collectFonts(node: SerializedNode, set: Set<string>) {
 }
 
 /** Recursively recreate a node tree inside `parent`. */
-async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNode | GroupNode | PageNode): Promise<SceneNode | null> {
+async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNode | GroupNode | BooleanOperationNode | PageNode): Promise<SceneNode | null> {
   let node: SceneNode | null = null;
 
   if (data.type === "FRAME" || data.type === "COMPONENT" || data.type === "INSTANCE" || data.type === "COMPONENT_SET") {
@@ -786,18 +992,20 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
     frame.blendMode = data.blendMode as BlendMode;
     frame.visible = data.visible;
 
-    applyFills(frame, data.fills);
-    applyStrokes(frame, data);
-    applyEffects(frame, data.effects);
+    await applyFills(frame, data.fills);
+    await applyStrokes(frame, data);
+    await applyEffects(frame, data.effects);
     if (data.fillStyleId) try { frame.fillStyleId = data.fillStyleId; } catch { }
     if (data.strokeStyleId) try { frame.strokeStyleId = data.strokeStyleId; } catch { }
     if (data.effectStyleId) try { frame.effectStyleId = data.effectStyleId; } catch { }
+    await applyStyleIds(frame, data);
 
     applyCorners(frame, data);
     applyFrameLayout(frame, data);
     parent.appendChild(frame);
     applyBaseLayout(frame, data);
-    applyBoundVariables(frame, data.boundVariables);
+    await applyExplicitVariableModes(frame, data.explicitVariableModes);
+    await applyBoundVariables(frame, data.boundVariables);
 
 
     if (data.children) {
@@ -844,20 +1052,88 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
       group.opacity = data.opacity;
       group.blendMode = data.blendMode as BlendMode;
       group.visible = data.visible;
-      applyEffects(group, data.effects);
+      await applyEffects(group, data.effects);
       if (data.effectStyleId) try { group.effectStyleId = data.effectStyleId; } catch { }
+      await applyStyleIds(group, data);
+      await applyExplicitVariableModes(group, data.explicitVariableModes);
+      await applyBoundVariables(group, data.boundVariables);
       tempFrame.remove();
       node = group;
     } else {
       tempFrame.name = data.name;
-      applyFills(tempFrame, data.fills);
-      applyStrokes(tempFrame, data);
-      applyEffects(tempFrame, data.effects);
+      await applyFills(tempFrame, data.fills);
+      await applyStrokes(tempFrame, data);
+      await applyEffects(tempFrame, data.effects);
       if (data.fillStyleId) try { tempFrame.fillStyleId = data.fillStyleId; } catch { }
       if (data.strokeStyleId) try { tempFrame.strokeStyleId = data.strokeStyleId; } catch { }
       if (data.effectStyleId) try { tempFrame.effectStyleId = data.effectStyleId; } catch { }
+      await applyStyleIds(tempFrame, data);
+      await applyExplicitVariableModes(tempFrame, data.explicitVariableModes);
+      await applyBoundVariables(tempFrame, data.boundVariables);
       node = tempFrame;
     }
+  }
+
+  else if (data.type === "BOOLEAN_OPERATION") {
+    const bool = figma.createBooleanOperation();
+    bool.name = data.name;
+    bool.booleanOperation = data.booleanOperation || "UNION";
+    bool.x = data.x;
+    bool.y = data.y;
+    bool.rotation = data.rotation;
+    bool.opacity = data.opacity;
+    bool.blendMode = data.blendMode as BlendMode;
+    bool.visible = data.visible;
+    parent.appendChild(bool);
+
+    if (data.children) {
+      for (const childData of data.children) {
+        await restoreNode(childData, bool);
+      }
+    }
+
+    await applyFills(bool, data.fills);
+    await applyStrokes(bool, data);
+    await applyEffects(bool, data.effects);
+    if (data.fillStyleId) try { bool.fillStyleId = data.fillStyleId; } catch { }
+    if (data.strokeStyleId) try { bool.strokeStyleId = data.strokeStyleId; } catch { }
+    if (data.effectStyleId) try { bool.effectStyleId = data.effectStyleId; } catch { }
+    await applyStyleIds(bool, data);
+
+    applyCorners(bool, data);
+    applyBaseLayout(bool, data);
+    await applyExplicitVariableModes(bool, data.explicitVariableModes);
+    await applyBoundVariables(bool, data.boundVariables);
+
+    node = bool;
+  }
+
+  else if (data.type === "VECTOR") {
+    const vector = figma.createVector();
+    vector.name = data.name;
+    vector.x = data.x;
+    vector.y = data.y;
+    vector.rotation = data.rotation;
+    vector.opacity = data.opacity;
+    vector.blendMode = data.blendMode as BlendMode;
+    vector.visible = data.visible;
+
+    await applyVectorGeometry(vector, data);
+    if (data.fills && data.fills.length > 0) await applyFills(vector, data.fills);
+    if (data.strokes && data.strokes.length > 0) await applyStrokes(vector, data);
+    await applyEffects(vector, data.effects);
+    if (data.fillStyleId) try { vector.fillStyleId = data.fillStyleId; } catch { }
+    if (data.strokeStyleId) try { vector.strokeStyleId = data.strokeStyleId; } catch { }
+    if (data.effectStyleId) try { vector.effectStyleId = data.effectStyleId; } catch { }
+    await applyStyleIds(vector, data);
+
+    applyCorners(vector, data);
+    parent.appendChild(vector);
+    applyBaseLayout(vector, data);
+    await applyExplicitVariableModes(vector, data.explicitVariableModes);
+    await applyBoundVariables(vector, data.boundVariables);
+
+    node = vector;
   }
 
   else if (data.type === "RECTANGLE") {
@@ -870,17 +1146,19 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
     rect.opacity = data.opacity;
     rect.blendMode = data.blendMode as BlendMode;
     rect.visible = data.visible;
-    applyFills(rect, data.fills);
-    applyStrokes(rect, data);
-    applyEffects(rect, data.effects);
+    await applyFills(rect, data.fills);
+    await applyStrokes(rect, data);
+    await applyEffects(rect, data.effects);
     if (data.fillStyleId) try { rect.fillStyleId = data.fillStyleId; } catch { }
     if (data.strokeStyleId) try { rect.strokeStyleId = data.strokeStyleId; } catch { }
     if (data.effectStyleId) try { rect.effectStyleId = data.effectStyleId; } catch { }
+    await applyStyleIds(rect, data);
 
     applyCorners(rect, data);
     parent.appendChild(rect);
     applyBaseLayout(rect, data);
-    applyBoundVariables(rect, data.boundVariables);
+    await applyExplicitVariableModes(rect, data.explicitVariableModes);
+    await applyBoundVariables(rect, data.boundVariables);
 
     node = rect;
   }
@@ -889,24 +1167,84 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
     const el = figma.createEllipse();
     el.name = data.name;
     el.resize(data.width, data.height);
+    if (data.arcData) try { el.arcData = data.arcData; } catch { }
     el.x = data.x;
     el.y = data.y;
     el.rotation = data.rotation;
     el.opacity = data.opacity;
     el.blendMode = data.blendMode as BlendMode;
     el.visible = data.visible;
-    applyFills(el, data.fills);
-    applyStrokes(el, data);
-    applyEffects(el, data.effects);
+    await applyFills(el, data.fills);
+    await applyStrokes(el, data);
+    await applyEffects(el, data.effects);
     if (data.fillStyleId) try { el.fillStyleId = data.fillStyleId; } catch { }
     if (data.strokeStyleId) try { el.strokeStyleId = data.strokeStyleId; } catch { }
     if (data.effectStyleId) try { el.effectStyleId = data.effectStyleId; } catch { }
+    await applyStyleIds(el, data);
 
     parent.appendChild(el);
     applyBaseLayout(el, data);
-    applyBoundVariables(el, data.boundVariables);
+    await applyExplicitVariableModes(el, data.explicitVariableModes);
+    await applyBoundVariables(el, data.boundVariables);
 
     node = el;
+  }
+
+  else if (data.type === "POLYGON") {
+    const polygon = figma.createPolygon();
+    polygon.name = data.name;
+    if (data.pointCount !== undefined) polygon.pointCount = data.pointCount;
+    polygon.resize(data.width, data.height);
+    polygon.x = data.x;
+    polygon.y = data.y;
+    polygon.rotation = data.rotation;
+    polygon.opacity = data.opacity;
+    polygon.blendMode = data.blendMode as BlendMode;
+    polygon.visible = data.visible;
+    await applyFills(polygon, data.fills);
+    await applyStrokes(polygon, data);
+    await applyEffects(polygon, data.effects);
+    if (data.fillStyleId) try { polygon.fillStyleId = data.fillStyleId; } catch { }
+    if (data.strokeStyleId) try { polygon.strokeStyleId = data.strokeStyleId; } catch { }
+    if (data.effectStyleId) try { polygon.effectStyleId = data.effectStyleId; } catch { }
+    await applyStyleIds(polygon, data);
+
+    applyCorners(polygon, data);
+    parent.appendChild(polygon);
+    applyBaseLayout(polygon, data);
+    await applyExplicitVariableModes(polygon, data.explicitVariableModes);
+    await applyBoundVariables(polygon, data.boundVariables);
+
+    node = polygon;
+  }
+
+  else if (data.type === "STAR") {
+    const star = figma.createStar();
+    star.name = data.name;
+    if (data.pointCount !== undefined) star.pointCount = data.pointCount;
+    if (data.innerRadius !== undefined) star.innerRadius = data.innerRadius;
+    star.resize(data.width, data.height);
+    star.x = data.x;
+    star.y = data.y;
+    star.rotation = data.rotation;
+    star.opacity = data.opacity;
+    star.blendMode = data.blendMode as BlendMode;
+    star.visible = data.visible;
+    await applyFills(star, data.fills);
+    await applyStrokes(star, data);
+    await applyEffects(star, data.effects);
+    if (data.fillStyleId) try { star.fillStyleId = data.fillStyleId; } catch { }
+    if (data.strokeStyleId) try { star.strokeStyleId = data.strokeStyleId; } catch { }
+    if (data.effectStyleId) try { star.effectStyleId = data.effectStyleId; } catch { }
+    await applyStyleIds(star, data);
+
+    applyCorners(star, data);
+    parent.appendChild(star);
+    applyBaseLayout(star, data);
+    await applyExplicitVariableModes(star, data.explicitVariableModes);
+    await applyBoundVariables(star, data.boundVariables);
+
+    node = star;
   }
 
   else if (data.type === "LINE") {
@@ -919,14 +1257,16 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
     line.opacity = data.opacity;
     line.blendMode = data.blendMode as BlendMode;
     line.visible = data.visible;
-    applyStrokes(line, data);
-    applyEffects(line, data.effects);
+    await applyStrokes(line, data);
+    await applyEffects(line, data.effects);
     if (data.strokeStyleId) try { line.strokeStyleId = data.strokeStyleId; } catch { }
     if (data.effectStyleId) try { line.effectStyleId = data.effectStyleId; } catch { }
+    await applyStyleIds(line, data);
 
     parent.appendChild(line);
     applyBaseLayout(line, data);
-    applyBoundVariables(line, data.boundVariables);
+    await applyExplicitVariableModes(line, data.explicitVariableModes);
+    await applyBoundVariables(line, data.boundVariables);
 
     node = line;
   }
@@ -958,14 +1298,16 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
         console.warn(`[class-manager] could not apply text style ${data.textStyleId}:`, e);
       }
     }
-    applyFills(text, data.fills);
-    applyEffects(text, data.effects);
+    await applyFills(text, data.fills);
+    await applyEffects(text, data.effects);
     if (data.fillStyleId) try { text.fillStyleId = data.fillStyleId; } catch { }
     if (data.effectStyleId) try { text.effectStyleId = data.effectStyleId; } catch { }
+    await applyStyleIds(text, data);
 
     parent.appendChild(text);
     applyBaseLayout(text, data);
-    applyBoundVariables(text, data.boundVariables);
+    await applyExplicitVariableModes(text, data.explicitVariableModes);
+    await applyBoundVariables(text, data.boundVariables);
 
     node = text;
   }
@@ -978,11 +1320,14 @@ async function restoreNode(data: SerializedNode, parent: FrameNode | ComponentNo
     placeholder.y = data.y;
     placeholder.opacity = data.opacity;
     placeholder.visible = data.visible;
-    applyFills(placeholder, data.fills);
-    applyEffects(placeholder, data.effects);
+    await applyFills(placeholder, data.fills);
+    await applyEffects(placeholder, data.effects);
     if (data.fillStyleId) try { placeholder.fillStyleId = data.fillStyleId; } catch { }
     if (data.effectStyleId) try { placeholder.effectStyleId = data.effectStyleId; } catch { }
+    await applyStyleIds(placeholder, data);
     parent.appendChild(placeholder);
+    await applyExplicitVariableModes(placeholder, data.explicitVariableModes);
+    await applyBoundVariables(placeholder, data.boundVariables);
     node = placeholder;
   }
 
@@ -1009,13 +1354,31 @@ async function applyOverrides(node: SceneNode, data: SerializedNode) {
   }
 
   // 2. Apply Visual Properties (Fills, Strokes, Effects)
-  if ("fills" in node) applyFills(node as any, data.fills);
-  if ("strokes" in node) applyStrokes(node as any, data);
-  if ("effects" in node) applyEffects(node as any, data.effects);
+  if ("fills" in node) await applyFills(node as any, data.fills);
+  if ("strokes" in node) await applyStrokes(node as any, data);
+  if ("effects" in node) await applyEffects(node as any, data.effects);
 
   if ("fillStyleId" in node && data.fillStyleId) try { (node as any).fillStyleId = data.fillStyleId; } catch { }
   if ("strokeStyleId" in node && data.strokeStyleId) try { (node as any).strokeStyleId = data.strokeStyleId; } catch { }
   if ("effectStyleId" in node && data.effectStyleId) try { (node as any).effectStyleId = data.effectStyleId; } catch { }
+  await applyStyleIds(node as any, data);
+
+  if (data.type === "VECTOR" && "vectorPaths" in node) {
+    await applyVectorGeometry(node as any, data);
+  }
+  if (node.type === "ELLIPSE" && data.arcData) {
+    try { (node as EllipseNode).arcData = data.arcData; } catch { }
+  }
+  if (node.type === "POLYGON" && data.pointCount !== undefined) {
+    try { (node as PolygonNode).pointCount = data.pointCount; } catch { }
+  }
+  if (node.type === "STAR") {
+    try { if (data.pointCount !== undefined) (node as StarNode).pointCount = data.pointCount; } catch { }
+    try { if (data.innerRadius !== undefined) (node as StarNode).innerRadius = data.innerRadius; } catch { }
+  }
+  if (node.type === "BOOLEAN_OPERATION" && data.booleanOperation) {
+    try { (node as BooleanOperationNode).booleanOperation = data.booleanOperation; } catch { }
+  }
 
   if ("opacity" in node && data.opacity !== undefined) (node as any).opacity = data.opacity;
   if ("visible" in node && data.visible !== undefined) node.visible = data.visible;
@@ -1029,6 +1392,8 @@ async function applyOverrides(node: SceneNode, data: SerializedNode) {
   // 4. Apply Layout & Positioning (Crucial for "Alignment Position")
   // We call this on ALL nodes because even simple Rectangles can have layoutAlign/Pos overrides
   applyBaseLayout(node as any, data);
+  await applyExplicitVariableModes(node, data.explicitVariableModes);
+  await applyBoundVariables(node, data.boundVariables);
 
   // Apply Frame-specific layout (Auto Layout props)
   if (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE" || node.type === "COMPONENT_SET") {

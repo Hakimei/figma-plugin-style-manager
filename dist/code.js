@@ -1,34 +1,32 @@
 "use strict";
 (() => {
+  var __defProp = Object.defineProperty;
+  var __defProps = Object.defineProperties;
+  var __getOwnPropDescs = Object.getOwnPropertyDescriptors;
+  var __getOwnPropSymbols = Object.getOwnPropertySymbols;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __propIsEnum = Object.prototype.propertyIsEnumerable;
+  var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+  var __spreadValues = (a, b) => {
+    for (var prop in b || (b = {}))
+      if (__hasOwnProp.call(b, prop))
+        __defNormalProp(a, prop, b[prop]);
+    if (__getOwnPropSymbols)
+      for (var prop of __getOwnPropSymbols(b)) {
+        if (__propIsEnum.call(b, prop))
+          __defNormalProp(a, prop, b[prop]);
+      }
+    return a;
+  };
+  var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
+
   // src/code.ts
   var LOCAL_STORAGE_KEY = "local-classes";
+  function cloneSerializable(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
   function serializePaint(paint) {
-    var _a;
-    let def;
-    if (paint.type === "SOLID") {
-      const solidPaint = paint;
-      def = {
-        type: "SOLID",
-        color: { r: solidPaint.color.r, g: solidPaint.color.g, b: solidPaint.color.b },
-        opacity: (_a = solidPaint.opacity) != null ? _a : 1
-      };
-    } else if (paint.type === "GRADIENT_LINEAR" || paint.type === "GRADIENT_RADIAL" || paint.type === "GRADIENT_ANGULAR" || paint.type === "GRADIENT_DIAMOND") {
-      const gradientPaint = paint;
-      def = {
-        type: paint.type,
-        gradientStops: gradientPaint.gradientStops.map((stop) => ({
-          position: stop.position,
-          color: { r: stop.color.r, g: stop.color.g, b: stop.color.b, a: stop.color.a }
-        }))
-      };
-    } else {
-      def = { type: paint.type };
-    }
-    const paintWithVariables = paint;
-    if (paintWithVariables.boundVariables && Object.keys(paintWithVariables.boundVariables).length > 0) {
-      def.boundVariables = JSON.parse(JSON.stringify(paintWithVariables.boundVariables));
-    }
-    return def;
+    return cloneSerializable(paint);
   }
   function serializeEffect(effect) {
     var _a, _b;
@@ -68,6 +66,14 @@
   function safeStrokes(node) {
     return typeof node.strokes === "symbol" ? [] : node.strokes.map(serializePaint);
   }
+  function copyPaintBindingAliases(paints, aliases) {
+    if (!paints || !aliases) return;
+    paints.forEach((paint, index) => {
+      const alias = aliases[index];
+      if (!alias) return;
+      paint.boundVariables = __spreadProps(__spreadValues({}, paint.boundVariables || {}), { color: alias });
+    });
+  }
   function getParentLayoutMode(node) {
     const parent = node.parent;
     if (!parent || !("layoutMode" in parent)) return void 0;
@@ -93,7 +99,7 @@
     return raw;
   }
   async function serializeNode(node, context) {
-    var _a;
+    var _a, _b, _c, _d;
     const base = {
       type: node.type,
       name: node.name,
@@ -134,12 +140,20 @@
     if ("boundVariables" in node && node.boundVariables) {
       const bv = node.boundVariables;
       if (Object.keys(bv).length > 0) {
-        base.boundVariables = JSON.parse(JSON.stringify(bv));
+        base.boundVariables = cloneSerializable(bv);
+      }
+    }
+    if ("explicitVariableModes" in node && node.explicitVariableModes) {
+      const modes = node.explicitVariableModes;
+      if (Object.keys(modes).length > 0) {
+        base.explicitVariableModes = cloneSerializable(modes);
       }
     }
     if ("fills" in node) {
       base.fills = safeFills(node);
       base.strokes = safeStrokes(node);
+      copyPaintBindingAliases(base.fills, (_a = base.boundVariables) == null ? void 0 : _a.fills);
+      copyPaintBindingAliases(base.strokes, (_b = base.boundVariables) == null ? void 0 : _b.strokes);
       base.strokeWeight = safeStrokeWeight(node);
       base.strokeAlign = node.strokeAlign;
       if ("strokeTopWeight" in node) base.strokeTopWeight = node.strokeTopWeight;
@@ -162,6 +176,12 @@
         const sml = node.strokeMiterLimit;
         base.strokeMiterLimit = typeof sml === "symbol" ? 4 : sml;
       }
+      if ("variableWidthStrokeProperties" in node) {
+        base.variableWidthStrokeProperties = cloneSerializable((_c = node.variableWidthStrokeProperties) != null ? _c : null);
+      }
+      if ("complexStrokeProperties" in node && node.complexStrokeProperties !== void 0) {
+        base.complexStrokeProperties = cloneSerializable(node.complexStrokeProperties);
+      }
     }
     if ("fillStyleId" in node && node.fillStyleId) base.fillStyleId = node.fillStyleId;
     if ("strokeStyleId" in node && node.strokeStyleId) base.strokeStyleId = node.strokeStyleId;
@@ -169,13 +189,45 @@
     if ("effects" in node) {
       base.effects = node.effects.map(serializeEffect).filter((e) => e !== null);
     }
+    if ("cornerRadius" in node) {
+      base.cornerRadius = safeCornerRadius(node);
+    }
+    if ("cornerSmoothing" in node) {
+      const smoothing = node.cornerSmoothing;
+      if (typeof smoothing !== "symbol") base.cornerSmoothing = smoothing;
+    }
     if (node.type === "RECTANGLE" || node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE" || node.type === "COMPONENT_SET") {
       const r = node;
-      base.cornerRadius = safeCornerRadius(r);
       base.topLeftRadius = r.topLeftRadius;
       base.topRightRadius = r.topRightRadius;
       base.bottomLeftRadius = r.bottomLeftRadius;
       base.bottomRightRadius = r.bottomRightRadius;
+    }
+    if ("vectorPaths" in node) {
+      base.vectorPaths = cloneSerializable(node.vectorPaths);
+    }
+    if ("vectorNetwork" in node) {
+      base.vectorNetwork = cloneSerializable(node.vectorNetwork);
+    }
+    if ("handleMirroring" in node) {
+      const handleMirroring = node.handleMirroring;
+      if (typeof handleMirroring !== "symbol") base.handleMirroring = handleMirroring;
+    }
+    if (node.type === "ELLIPSE") {
+      base.arcData = cloneSerializable(node.arcData);
+    }
+    if (node.type === "POLYGON") {
+      base.pointCount = node.pointCount;
+    }
+    if (node.type === "STAR") {
+      const star = node;
+      base.pointCount = star.pointCount;
+      base.innerRadius = star.innerRadius;
+    }
+    if (node.type === "BOOLEAN_OPERATION") {
+      const bool = node;
+      base.booleanOperation = bool.booleanOperation;
+      base.children = await Promise.all(bool.children.map((child) => serializeNode(child, context)));
     }
     if (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE" || node.type === "COMPONENT_SET") {
       const f = node;
@@ -191,7 +243,7 @@
       base.paddingLeft = f.paddingLeft;
       base.paddingRight = f.paddingRight;
       base.itemSpacing = f.itemSpacing;
-      base.counterAxisSpacing = (_a = f.counterAxisSpacing) != null ? _a : void 0;
+      base.counterAxisSpacing = (_d = f.counterAxisSpacing) != null ? _d : void 0;
       base.itemReverseZIndex = f.itemReverseZIndex;
       base.strokesIncludedInLayout = f.strokesIncludedInLayout;
       base.clipsContent = f.clipsContent;
@@ -317,18 +369,59 @@
     } catch (e) {
     }
   }
-  function applyBoundVariables(node, boundVariables) {
+  async function getVariableForAlias(alias) {
+    if (!alias || !alias.id) return null;
+    try {
+      return await figma.variables.getVariableByIdAsync(alias.id);
+    } catch (e) {
+      console.warn(`[class-manager] could not resolve variable ${alias.id}:`, e);
+      return null;
+    }
+  }
+  async function applyExplicitVariableModes(node, explicitVariableModes) {
+    if (!explicitVariableModes || !("setExplicitVariableModeForCollection" in node)) return;
+    for (const [collectionId, modeId] of Object.entries(explicitVariableModes)) {
+      try {
+        const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+        if (collection) {
+          node.setExplicitVariableModeForCollection(collection, modeId);
+        }
+      } catch (e) {
+        console.warn(`[class-manager] could not apply variable mode ${collectionId}:`, e);
+      }
+    }
+  }
+  async function applyBoundVariables(node, boundVariables) {
     if (!boundVariables) return;
+    const textVariableFields = /* @__PURE__ */ new Set([
+      "fontFamily",
+      "fontSize",
+      "fontStyle",
+      "fontWeight",
+      "letterSpacing",
+      "lineHeight",
+      "paragraphSpacing",
+      "paragraphIndent"
+    ]);
     for (const [prop, value] of Object.entries(boundVariables)) {
       try {
         if (Array.isArray(value)) {
+          if (!textVariableFields.has(prop)) continue;
+          if (value.length === 0) continue;
+          const aliases = value.filter((alias) => !Array.isArray(alias) && !!alias && typeof alias.id === "string");
+          if (aliases.length !== value.length) continue;
+          const firstAlias = aliases[0];
+          const allSame = aliases.every((alias) => alias.id === firstAlias.id);
+          if (!allSame) continue;
+          const variable = await getVariableForAlias(firstAlias);
+          if (variable && typeof node.setBoundVariable === "function") {
+            node.setBoundVariable(prop, variable);
+          }
         } else {
           const alias = value;
-          if (alias && alias.id) {
-            const variable = figma.variables.getVariableById(alias.id);
-            if (variable) {
-              node.setBoundVariable(prop, variable);
-            }
+          const variable = await getVariableForAlias(alias);
+          if (variable && typeof node.setBoundVariable === "function") {
+            node.setBoundVariable(prop, variable);
           }
         }
       } catch (e) {
@@ -336,16 +429,36 @@
       }
     }
   }
-  function applyPaint(def) {
+  async function applyPaint(def) {
+    var _a, _b;
     let paint = null;
     if (def.type === "SOLID") {
       const d = def;
-      paint = { type: "SOLID", color: d.color, opacity: d.opacity };
+      paint = {
+        type: "SOLID",
+        color: d.color,
+        opacity: (_a = d.opacity) != null ? _a : 1,
+        visible: d.visible,
+        blendMode: d.blendMode
+      };
+    } else if (def.type === "GRADIENT_LINEAR" || def.type === "GRADIENT_RADIAL" || def.type === "GRADIENT_ANGULAR" || def.type === "GRADIENT_DIAMOND") {
+      const d = def;
+      paint = {
+        type: d.type,
+        gradientTransform: (_b = d.gradientTransform) != null ? _b : [[1, 0, 0], [0, 1, 0]],
+        gradientStops: d.gradientStops,
+        opacity: d.opacity,
+        visible: d.visible,
+        blendMode: d.blendMode
+      };
+    } else {
+      paint = cloneSerializable(def);
+      delete paint.boundVariables;
     }
     if (paint && def.boundVariables) {
       for (const [prop, value] of Object.entries(def.boundVariables)) {
         try {
-          const variable = figma.variables.getVariableById(value.id);
+          const variable = await getVariableForAlias(value);
           if (variable) {
             paint = figma.variables.setBoundVariableForPaint(paint, prop, variable);
           }
@@ -356,17 +469,27 @@
     }
     return paint;
   }
-  function applyFills(node, fills) {
+  async function applyPaintList(node, property, defs) {
+    if (!defs) return;
+    const paints = (await Promise.all(defs.map(applyPaint))).filter((p) => p !== null);
+    const asyncSetter = property === "fills" ? "setFillsAsync" : "setStrokesAsync";
+    if (typeof node[asyncSetter] === "function") {
+      await node[asyncSetter](paints);
+    } else {
+      node[property] = paints;
+    }
+  }
+  async function applyFills(node, fills) {
     if (!fills) return;
     try {
-      node.fills = fills.map(applyPaint).filter((p) => p !== null);
+      await applyPaintList(node, "fills", fills);
     } catch (e) {
     }
   }
-  function applyStrokes(node, data) {
+  async function applyStrokes(node, data) {
     if (!data.strokes) return;
     try {
-      node.strokes = data.strokes.map(applyPaint).filter((p) => p !== null);
+      await applyPaintList(node, "strokes", data.strokes);
       if (data.strokeWeight !== void 0) node.strokeWeight = data.strokeWeight;
       if (data.strokeTopWeight !== void 0 && "strokeTopWeight" in node) node.strokeTopWeight = data.strokeTopWeight;
       if (data.strokeRightWeight !== void 0 && "strokeRightWeight" in node) node.strokeRightWeight = data.strokeRightWeight;
@@ -377,12 +500,31 @@
       if (data.strokeCap !== void 0 && "strokeCap" in node) node.strokeCap = data.strokeCap;
       if (data.strokeJoin !== void 0 && "strokeJoin" in node) node.strokeJoin = data.strokeJoin;
       if (data.strokeMiterLimit !== void 0 && "strokeMiterLimit" in node) node.strokeMiterLimit = data.strokeMiterLimit;
+      if (data.complexStrokeProperties !== void 0 && "complexStrokeProperties" in node) {
+        try {
+          const props = data.complexStrokeProperties;
+          if (props.type === "BRUSH") {
+            if (props.brushName === "CUSTOM") throw new Error("custom brushes cannot be restored through the plugin API");
+            await figma.loadBrushesAsync(props.brushType);
+          }
+          node.complexStrokeProperties = props;
+        } catch (e) {
+          console.warn(`[class-manager] could not restore complex stroke on ${data.name}:`, e);
+        }
+      }
+      if (data.variableWidthStrokeProperties !== void 0 && "variableWidthStrokeProperties" in node) {
+        try {
+          node.variableWidthStrokeProperties = data.variableWidthStrokeProperties;
+        } catch (e) {
+          console.warn(`[class-manager] could not restore variable-width stroke on ${data.name}:`, e);
+        }
+      }
     } catch (e) {
     }
   }
-  function applyEffects(node, effects) {
+  async function applyEffects(node, effects) {
     if (!effects) return;
-    node.effects = effects.map((e) => {
+    node.effects = await Promise.all(effects.map(async (e) => {
       var _a, _b;
       let effect;
       if (e.type === "DROP_SHADOW" || e.type === "INNER_SHADOW") {
@@ -408,7 +550,7 @@
       if (e.boundVariables) {
         for (const [prop, value] of Object.entries(e.boundVariables)) {
           try {
-            const variable = figma.variables.getVariableById(value.id);
+            const variable = await getVariableForAlias(value);
             if (variable) {
               effect = figma.variables.setBoundVariableForEffect(effect, prop, variable);
             }
@@ -418,12 +560,35 @@
         }
       }
       return effect;
-    });
+    }));
+  }
+  async function applyStyleIds(node, data) {
+    try {
+      if (data.fillStyleId && "fillStyleId" in node) {
+        if (typeof node.setFillStyleIdAsync === "function") await node.setFillStyleIdAsync(data.fillStyleId);
+        else node.fillStyleId = data.fillStyleId;
+      }
+    } catch (e) {
+    }
+    try {
+      if (data.strokeStyleId && "strokeStyleId" in node) {
+        if (typeof node.setStrokeStyleIdAsync === "function") await node.setStrokeStyleIdAsync(data.strokeStyleId);
+        else node.strokeStyleId = data.strokeStyleId;
+      }
+    } catch (e) {
+    }
+    try {
+      if (data.effectStyleId && "effectStyleId" in node) {
+        if (typeof node.setEffectStyleIdAsync === "function") await node.setEffectStyleIdAsync(data.effectStyleId);
+        else node.effectStyleId = data.effectStyleId;
+      }
+    } catch (e) {
+    }
   }
   function applyCorners(node, data) {
     const cr = data.cornerRadius;
     try {
-      if (cr !== void 0 && cr >= 0 && cr === data.topLeftRadius) {
+      if (cr !== void 0 && cr >= 0 && (data.topLeftRadius === void 0 || cr === data.topLeftRadius)) {
         node.cornerRadius = cr;
       } else {
         if (data.topLeftRadius !== void 0) node.topLeftRadius = data.topLeftRadius;
@@ -431,7 +596,24 @@
         if (data.bottomLeftRadius !== void 0) node.bottomLeftRadius = data.bottomLeftRadius;
         if (data.bottomRightRadius !== void 0) node.bottomRightRadius = data.bottomRightRadius;
       }
+      if (data.cornerSmoothing !== void 0 && "cornerSmoothing" in node) {
+        node.cornerSmoothing = data.cornerSmoothing;
+      }
     } catch (e) {
+    }
+  }
+  async function applyVectorGeometry(node, data) {
+    try {
+      if (data.vectorNetwork && typeof node.setVectorNetworkAsync === "function") {
+        await node.setVectorNetworkAsync(data.vectorNetwork);
+      } else if (data.vectorPaths && "vectorPaths" in node) {
+        node.vectorPaths = data.vectorPaths;
+      }
+      if (data.handleMirroring && "handleMirroring" in node) {
+        node.handleMirroring = data.handleMirroring;
+      }
+    } catch (e) {
+      console.warn(`[class-manager] could not restore vector geometry for ${data.name}:`, e);
     }
   }
   function applyFrameLayout(frame, data) {
@@ -559,9 +741,9 @@
       frame.opacity = data.opacity;
       frame.blendMode = data.blendMode;
       frame.visible = data.visible;
-      applyFills(frame, data.fills);
-      applyStrokes(frame, data);
-      applyEffects(frame, data.effects);
+      await applyFills(frame, data.fills);
+      await applyStrokes(frame, data);
+      await applyEffects(frame, data.effects);
       if (data.fillStyleId) try {
         frame.fillStyleId = data.fillStyleId;
       } catch (e) {
@@ -574,11 +756,13 @@
         frame.effectStyleId = data.effectStyleId;
       } catch (e) {
       }
+      await applyStyleIds(frame, data);
       applyCorners(frame, data);
       applyFrameLayout(frame, data);
       parent.appendChild(frame);
       applyBaseLayout(frame, data);
-      applyBoundVariables(frame, data.boundVariables);
+      await applyExplicitVariableModes(frame, data.explicitVariableModes);
+      await applyBoundVariables(frame, data.boundVariables);
       if (data.children) {
         if (frame.type === "INSTANCE") {
           const inst = frame;
@@ -615,18 +799,21 @@
         group.opacity = data.opacity;
         group.blendMode = data.blendMode;
         group.visible = data.visible;
-        applyEffects(group, data.effects);
+        await applyEffects(group, data.effects);
         if (data.effectStyleId) try {
           group.effectStyleId = data.effectStyleId;
         } catch (e) {
         }
+        await applyStyleIds(group, data);
+        await applyExplicitVariableModes(group, data.explicitVariableModes);
+        await applyBoundVariables(group, data.boundVariables);
         tempFrame.remove();
         node = group;
       } else {
         tempFrame.name = data.name;
-        applyFills(tempFrame, data.fills);
-        applyStrokes(tempFrame, data);
-        applyEffects(tempFrame, data.effects);
+        await applyFills(tempFrame, data.fills);
+        await applyStrokes(tempFrame, data);
+        await applyEffects(tempFrame, data.effects);
         if (data.fillStyleId) try {
           tempFrame.fillStyleId = data.fillStyleId;
         } catch (e) {
@@ -639,8 +826,80 @@
           tempFrame.effectStyleId = data.effectStyleId;
         } catch (e) {
         }
+        await applyStyleIds(tempFrame, data);
+        await applyExplicitVariableModes(tempFrame, data.explicitVariableModes);
+        await applyBoundVariables(tempFrame, data.boundVariables);
         node = tempFrame;
       }
+    } else if (data.type === "BOOLEAN_OPERATION") {
+      const bool = figma.createBooleanOperation();
+      bool.name = data.name;
+      bool.booleanOperation = data.booleanOperation || "UNION";
+      bool.x = data.x;
+      bool.y = data.y;
+      bool.rotation = data.rotation;
+      bool.opacity = data.opacity;
+      bool.blendMode = data.blendMode;
+      bool.visible = data.visible;
+      parent.appendChild(bool);
+      if (data.children) {
+        for (const childData of data.children) {
+          await restoreNode(childData, bool);
+        }
+      }
+      await applyFills(bool, data.fills);
+      await applyStrokes(bool, data);
+      await applyEffects(bool, data.effects);
+      if (data.fillStyleId) try {
+        bool.fillStyleId = data.fillStyleId;
+      } catch (e) {
+      }
+      if (data.strokeStyleId) try {
+        bool.strokeStyleId = data.strokeStyleId;
+      } catch (e) {
+      }
+      if (data.effectStyleId) try {
+        bool.effectStyleId = data.effectStyleId;
+      } catch (e) {
+      }
+      await applyStyleIds(bool, data);
+      applyCorners(bool, data);
+      applyBaseLayout(bool, data);
+      await applyExplicitVariableModes(bool, data.explicitVariableModes);
+      await applyBoundVariables(bool, data.boundVariables);
+      node = bool;
+    } else if (data.type === "VECTOR") {
+      const vector = figma.createVector();
+      vector.name = data.name;
+      vector.x = data.x;
+      vector.y = data.y;
+      vector.rotation = data.rotation;
+      vector.opacity = data.opacity;
+      vector.blendMode = data.blendMode;
+      vector.visible = data.visible;
+      await applyVectorGeometry(vector, data);
+      if (data.fills && data.fills.length > 0) await applyFills(vector, data.fills);
+      if (data.strokes && data.strokes.length > 0) await applyStrokes(vector, data);
+      await applyEffects(vector, data.effects);
+      if (data.fillStyleId) try {
+        vector.fillStyleId = data.fillStyleId;
+      } catch (e) {
+      }
+      if (data.strokeStyleId) try {
+        vector.strokeStyleId = data.strokeStyleId;
+      } catch (e) {
+      }
+      if (data.effectStyleId) try {
+        vector.effectStyleId = data.effectStyleId;
+      } catch (e) {
+      }
+      await applyStyleIds(vector, data);
+      applyCorners(vector, data);
+      parent.appendChild(vector);
+      applyBaseLayout(vector, data);
+      await applyExplicitVariableModes(vector, data.explicitVariableModes);
+      await applyBoundVariables(vector, data.boundVariables);
+      node = vector;
     } else if (data.type === "RECTANGLE") {
       const rect = figma.createRectangle();
       rect.name = data.name;
@@ -651,9 +910,9 @@
       rect.opacity = data.opacity;
       rect.blendMode = data.blendMode;
       rect.visible = data.visible;
-      applyFills(rect, data.fills);
-      applyStrokes(rect, data);
-      applyEffects(rect, data.effects);
+      await applyFills(rect, data.fills);
+      await applyStrokes(rect, data);
+      await applyEffects(rect, data.effects);
       if (data.fillStyleId) try {
         rect.fillStyleId = data.fillStyleId;
       } catch (e) {
@@ -666,24 +925,30 @@
         rect.effectStyleId = data.effectStyleId;
       } catch (e) {
       }
+      await applyStyleIds(rect, data);
       applyCorners(rect, data);
       parent.appendChild(rect);
       applyBaseLayout(rect, data);
-      applyBoundVariables(rect, data.boundVariables);
+      await applyExplicitVariableModes(rect, data.explicitVariableModes);
+      await applyBoundVariables(rect, data.boundVariables);
       node = rect;
     } else if (data.type === "ELLIPSE") {
       const el = figma.createEllipse();
       el.name = data.name;
       el.resize(data.width, data.height);
+      if (data.arcData) try {
+        el.arcData = data.arcData;
+      } catch (e) {
+      }
       el.x = data.x;
       el.y = data.y;
       el.rotation = data.rotation;
       el.opacity = data.opacity;
       el.blendMode = data.blendMode;
       el.visible = data.visible;
-      applyFills(el, data.fills);
-      applyStrokes(el, data);
-      applyEffects(el, data.effects);
+      await applyFills(el, data.fills);
+      await applyStrokes(el, data);
+      await applyEffects(el, data.effects);
       if (data.fillStyleId) try {
         el.fillStyleId = data.fillStyleId;
       } catch (e) {
@@ -696,10 +961,79 @@
         el.effectStyleId = data.effectStyleId;
       } catch (e) {
       }
+      await applyStyleIds(el, data);
       parent.appendChild(el);
       applyBaseLayout(el, data);
-      applyBoundVariables(el, data.boundVariables);
+      await applyExplicitVariableModes(el, data.explicitVariableModes);
+      await applyBoundVariables(el, data.boundVariables);
       node = el;
+    } else if (data.type === "POLYGON") {
+      const polygon = figma.createPolygon();
+      polygon.name = data.name;
+      if (data.pointCount !== void 0) polygon.pointCount = data.pointCount;
+      polygon.resize(data.width, data.height);
+      polygon.x = data.x;
+      polygon.y = data.y;
+      polygon.rotation = data.rotation;
+      polygon.opacity = data.opacity;
+      polygon.blendMode = data.blendMode;
+      polygon.visible = data.visible;
+      await applyFills(polygon, data.fills);
+      await applyStrokes(polygon, data);
+      await applyEffects(polygon, data.effects);
+      if (data.fillStyleId) try {
+        polygon.fillStyleId = data.fillStyleId;
+      } catch (e) {
+      }
+      if (data.strokeStyleId) try {
+        polygon.strokeStyleId = data.strokeStyleId;
+      } catch (e) {
+      }
+      if (data.effectStyleId) try {
+        polygon.effectStyleId = data.effectStyleId;
+      } catch (e) {
+      }
+      await applyStyleIds(polygon, data);
+      applyCorners(polygon, data);
+      parent.appendChild(polygon);
+      applyBaseLayout(polygon, data);
+      await applyExplicitVariableModes(polygon, data.explicitVariableModes);
+      await applyBoundVariables(polygon, data.boundVariables);
+      node = polygon;
+    } else if (data.type === "STAR") {
+      const star = figma.createStar();
+      star.name = data.name;
+      if (data.pointCount !== void 0) star.pointCount = data.pointCount;
+      if (data.innerRadius !== void 0) star.innerRadius = data.innerRadius;
+      star.resize(data.width, data.height);
+      star.x = data.x;
+      star.y = data.y;
+      star.rotation = data.rotation;
+      star.opacity = data.opacity;
+      star.blendMode = data.blendMode;
+      star.visible = data.visible;
+      await applyFills(star, data.fills);
+      await applyStrokes(star, data);
+      await applyEffects(star, data.effects);
+      if (data.fillStyleId) try {
+        star.fillStyleId = data.fillStyleId;
+      } catch (e) {
+      }
+      if (data.strokeStyleId) try {
+        star.strokeStyleId = data.strokeStyleId;
+      } catch (e) {
+      }
+      if (data.effectStyleId) try {
+        star.effectStyleId = data.effectStyleId;
+      } catch (e) {
+      }
+      await applyStyleIds(star, data);
+      applyCorners(star, data);
+      parent.appendChild(star);
+      applyBaseLayout(star, data);
+      await applyExplicitVariableModes(star, data.explicitVariableModes);
+      await applyBoundVariables(star, data.boundVariables);
+      node = star;
     } else if (data.type === "LINE") {
       const line = figma.createLine();
       line.name = data.name;
@@ -710,8 +1044,8 @@
       line.opacity = data.opacity;
       line.blendMode = data.blendMode;
       line.visible = data.visible;
-      applyStrokes(line, data);
-      applyEffects(line, data.effects);
+      await applyStrokes(line, data);
+      await applyEffects(line, data.effects);
       if (data.strokeStyleId) try {
         line.strokeStyleId = data.strokeStyleId;
       } catch (e) {
@@ -720,9 +1054,11 @@
         line.effectStyleId = data.effectStyleId;
       } catch (e) {
       }
+      await applyStyleIds(line, data);
       parent.appendChild(line);
       applyBaseLayout(line, data);
-      applyBoundVariables(line, data.boundVariables);
+      await applyExplicitVariableModes(line, data.explicitVariableModes);
+      await applyBoundVariables(line, data.boundVariables);
       node = line;
     } else if (data.type === "TEXT") {
       const text = figma.createText();
@@ -751,8 +1087,8 @@
           console.warn(`[class-manager] could not apply text style ${data.textStyleId}:`, e);
         }
       }
-      applyFills(text, data.fills);
-      applyEffects(text, data.effects);
+      await applyFills(text, data.fills);
+      await applyEffects(text, data.effects);
       if (data.fillStyleId) try {
         text.fillStyleId = data.fillStyleId;
       } catch (e) {
@@ -761,9 +1097,11 @@
         text.effectStyleId = data.effectStyleId;
       } catch (e) {
       }
+      await applyStyleIds(text, data);
       parent.appendChild(text);
       applyBaseLayout(text, data);
-      applyBoundVariables(text, data.boundVariables);
+      await applyExplicitVariableModes(text, data.explicitVariableModes);
+      await applyBoundVariables(text, data.boundVariables);
       node = text;
     } else {
       const placeholder = figma.createRectangle();
@@ -773,8 +1111,8 @@
       placeholder.y = data.y;
       placeholder.opacity = data.opacity;
       placeholder.visible = data.visible;
-      applyFills(placeholder, data.fills);
-      applyEffects(placeholder, data.effects);
+      await applyFills(placeholder, data.fills);
+      await applyEffects(placeholder, data.effects);
       if (data.fillStyleId) try {
         placeholder.fillStyleId = data.fillStyleId;
       } catch (e) {
@@ -783,7 +1121,10 @@
         placeholder.effectStyleId = data.effectStyleId;
       } catch (e) {
       }
+      await applyStyleIds(placeholder, data);
       parent.appendChild(placeholder);
+      await applyExplicitVariableModes(placeholder, data.explicitVariableModes);
+      await applyBoundVariables(placeholder, data.boundVariables);
       node = placeholder;
     }
     return node;
@@ -801,9 +1142,9 @@
         }
       }
     }
-    if ("fills" in node) applyFills(node, data.fills);
-    if ("strokes" in node) applyStrokes(node, data);
-    if ("effects" in node) applyEffects(node, data.effects);
+    if ("fills" in node) await applyFills(node, data.fills);
+    if ("strokes" in node) await applyStrokes(node, data);
+    if ("effects" in node) await applyEffects(node, data.effects);
     if ("fillStyleId" in node && data.fillStyleId) try {
       node.fillStyleId = data.fillStyleId;
     } catch (e) {
@@ -816,6 +1157,38 @@
       node.effectStyleId = data.effectStyleId;
     } catch (e) {
     }
+    await applyStyleIds(node, data);
+    if (data.type === "VECTOR" && "vectorPaths" in node) {
+      await applyVectorGeometry(node, data);
+    }
+    if (node.type === "ELLIPSE" && data.arcData) {
+      try {
+        node.arcData = data.arcData;
+      } catch (e) {
+      }
+    }
+    if (node.type === "POLYGON" && data.pointCount !== void 0) {
+      try {
+        node.pointCount = data.pointCount;
+      } catch (e) {
+      }
+    }
+    if (node.type === "STAR") {
+      try {
+        if (data.pointCount !== void 0) node.pointCount = data.pointCount;
+      } catch (e) {
+      }
+      try {
+        if (data.innerRadius !== void 0) node.innerRadius = data.innerRadius;
+      } catch (e) {
+      }
+    }
+    if (node.type === "BOOLEAN_OPERATION" && data.booleanOperation) {
+      try {
+        node.booleanOperation = data.booleanOperation;
+      } catch (e) {
+      }
+    }
     if ("opacity" in node && data.opacity !== void 0) node.opacity = data.opacity;
     if ("visible" in node && data.visible !== void 0) node.visible = data.visible;
     if ("blendMode" in node && data.blendMode !== void 0) node.blendMode = data.blendMode;
@@ -823,6 +1196,8 @@
       applyCorners(node, data);
     }
     applyBaseLayout(node, data);
+    await applyExplicitVariableModes(node, data.explicitVariableModes);
+    await applyBoundVariables(node, data.boundVariables);
     if (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE" || node.type === "COMPONENT_SET") {
       applyFrameLayout(node, data);
     }
